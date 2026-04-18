@@ -2,7 +2,7 @@ import { render } from "./render";
 import { clearSave, loadGame, newGame, saveGame } from "./state";
 import { endYear } from "./turn";
 import { GameState } from "./types";
-import { attachCanvasClick, initUI, renderUI } from "./ui";
+import { attachCanvasClick, initUI, maybeShowIntro, renderUI } from "./ui";
 
 const canvas = document.getElementById("map") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -26,9 +26,11 @@ initUI({
     state = newGame();
     saveGame(state);
     redraw();
+    maybeShowIntro();
   },
 });
 
 attachCanvasClick(canvas, () => state, redraw);
 
 redraw();
+maybeShowIntro();

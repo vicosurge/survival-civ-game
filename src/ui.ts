@@ -8,11 +8,38 @@ export interface UIHandlers {
   onNewGame: () => void;
 }
 
+const SKIP_INTRO_KEY = "isle-of-elden-skip-intro";
+
 export function initUI(handlers: UIHandlers): void {
   document.getElementById("end-turn-btn")!.addEventListener("click", handlers.onEndYear);
   document.getElementById("new-game-btn")!.addEventListener("click", () => {
     if (confirm("Abandon this settlement and start a new game?")) handlers.onNewGame();
   });
+  initIntroHandlers();
+}
+
+function initIntroHandlers(): void {
+  const beginBtn = document.getElementById("intro-begin-btn")!;
+  const skipBox = document.getElementById("intro-skip-checkbox") as HTMLInputElement;
+  skipBox.checked = localStorage.getItem(SKIP_INTRO_KEY) === "1";
+  skipBox.addEventListener("change", () => {
+    if (skipBox.checked) localStorage.setItem(SKIP_INTRO_KEY, "1");
+    else localStorage.removeItem(SKIP_INTRO_KEY);
+  });
+  beginBtn.addEventListener("click", () => hideIntro());
+}
+
+export function maybeShowIntro(): void {
+  if (localStorage.getItem(SKIP_INTRO_KEY) === "1") return;
+  const overlay = document.getElementById("intro-overlay")!;
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
+function hideIntro(): void {
+  const overlay = document.getElementById("intro-overlay")!;
+  overlay.classList.add("hidden");
+  overlay.setAttribute("aria-hidden", "true");
 }
 
 export function attachCanvasClick(

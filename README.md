@@ -6,7 +6,10 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## Status
 
-**v0.2.2 — Cambrera and the rescue ship.** The island has a name now: **Cambrera**, the small northern refuge chosen by survivors of a continent-destroying war. The ship that brought the settlers can be dispatched to comb the coast for other refugees. Also: starter cohorts are no longer susceptible to mass old-age die-off, and the settlement starts with 2 children.
+**v0.2.4 — Opening papyrus.** A parchment-style intro overlay now greets the player with the Cambrera backstory on first load and after each New Game. A "Skip this on future games" checkbox persists the preference to `localStorage` for players who've already read it.
+
+### In v0.2.4
+- **Intro papyrus.** CSS-only parchment panel with the Cambrera war-refugee framing. Shows on first load and on New Game unless the player opts out.
 
 ### In v0.2.2
 - **Cambrera.** The island is named; starter log reflects the refugee framing. (Gameplay unchanged — the world is just fleshed out.)

@@ -36,7 +36,11 @@ Requires Node ≥ 18.
 - localStorage for saves (single save slot, key `isle-of-elden-save-v4` as of v0.2.2 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
-## Current mechanics (v0.2.2)
+## Current mechanics (v0.2.4)
+
+### Intro papyrus (v0.2.4)
+
+`#intro-overlay` in `index.html` is a parchment-style overlay with the Cambrera backstory. Hidden by default via the `hidden` class. `maybeShowIntro()` in `ui.ts` un-hides it on first load and after New Game, unless `localStorage["isle-of-elden-skip-intro"] === "1"`. The "Skip this on future games" checkbox inside the overlay sets/clears that key. No game-state impact; CSS-only styling, no assets.
 
 ### Pops
 

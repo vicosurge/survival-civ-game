@@ -216,3 +216,110 @@ html, body {
   color: var(--ink);
 }
 #turn-controls button.secondary:hover { background: #5c4933; }
+
+#intro-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1.5rem;
+}
+#intro-overlay.hidden { display: none; }
+
+#intro-papyrus {
+  max-width: 620px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  background:
+    radial-gradient(ellipse at 20% 10%, rgba(120, 80, 40, 0.12), transparent 60%),
+    radial-gradient(ellipse at 80% 90%, rgba(60, 30, 10, 0.18), transparent 55%),
+    linear-gradient(180deg, #e9d7a9 0%, #d9c28a 100%);
+  color: #3a2814;
+  border: 2px solid #5c4320;
+  box-shadow:
+    0 0 0 4px #a88556 inset,
+    0 0 24px rgba(0, 0, 0, 0.6);
+  padding: 2rem 2.25rem;
+  font-family: "Georgia", "Times New Roman", serif;
+  line-height: 1.65;
+  position: relative;
+}
+
+#intro-papyrus::before,
+#intro-papyrus::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 14px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 6px,
+    rgba(92, 67, 32, 0.4) 6px 8px,
+    transparent 8px 18px
+  );
+  pointer-events: none;
+}
+#intro-papyrus::before { top: -6px; }
+#intro-papyrus::after { bottom: -6px; }
+
+#intro-papyrus h2 {
+  margin: 0 0 1rem 0;
+  text-align: center;
+  font-size: 2rem;
+  letter-spacing: 0.15em;
+  color: #6b3f0f;
+  text-transform: uppercase;
+  font-weight: normal;
+}
+
+#intro-body p {
+  margin: 0 0 1rem 0;
+  text-align: justify;
+  text-indent: 1.5em;
+}
+#intro-body p:first-child {
+  text-indent: 0;
+  font-style: italic;
+  text-align: center;
+  font-size: 1.1rem;
+}
+#intro-body em { color: #6b3f0f; font-style: italic; }
+
+#intro-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(92, 67, 32, 0.5);
+  gap: 1rem;
+}
+
+#intro-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #5c4320;
+  cursor: pointer;
+  user-select: none;
+}
+
+#intro-begin-btn {
+  padding: 0.6rem 1.8rem;
+  background: #6b3f0f;
+  color: #f0e2b8;
+  border: 2px solid #3a2814;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+#intro-begin-btn:hover { background: #8a5415; }
