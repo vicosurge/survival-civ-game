@@ -200,9 +200,10 @@ function tileAcceptsWorker(tile: Tile, job: Exclude<Job, "scout">): boolean {
   return tile.workers < tile.capacity;
 }
 
-// Nearest in-reach, discovered, eligible tile to the town. Returns null if none.
-// Ties broken by fertility descending — so the auto-allocator steers farmers
-// onto rich land when multiple candidates are equidistant.
+// Best in-reach, discovered, eligible tile for this job. Fertility is primary
+// (prefer rich grass over baseline even if a step further), distance is the
+// tiebreaker. For wood/stone jobs, fertility is always 0 so distance wins —
+// matches the v0.2.4 behavior for those jobs.
 export function findEligibleTile(
   state: GameState,
   job: Exclude<Job, "scout">,
@@ -214,8 +215,8 @@ export function findEligibleTile(
     const fert = tile.fertility;
     const better =
       best === null ||
-      dist < best.dist ||
-      (dist === best.dist && fert > best.fert);
+      fert > best.fert ||
+      (fert === best.fert && dist < best.dist);
     if (better) best = { x, y, tile, dist, fert };
   }
   return best && { x: best.x, y: best.y, tile: best.tile };

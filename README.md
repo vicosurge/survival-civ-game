@@ -6,7 +6,10 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## Status
 
-**v0.2.4 — Opening papyrus.** A parchment-style intro overlay now greets the player with the Cambrera backstory on first load and after each New Game. A "Skip this on future games" checkbox persists the preference to `localStorage` for players who've already read it.
+**v0.2.5 — Fertile-first allocator.** The auto-allocator now prefers fertile grass over baseline grass, even when the fertile tile is a step or two further from town. Previously distance was primary and fertility was just a tiebreaker at equal distance, which meant the town tile (distance 0) always won regardless of what rich land existed nearby.
+
+### In v0.2.5
+- **Fertility is now the primary sort key** in `findEligibleTile`. Distance is the tiebreaker. No change to wood/stone allocation — those tiles have `fertility = 0`.
 
 ### In v0.2.4
 - **Intro papyrus.** CSS-only parchment panel with the Cambrera war-refugee framing. Shows on first load and on New Game unless the player opts out.

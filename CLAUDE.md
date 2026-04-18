@@ -36,7 +36,13 @@ Requires Node ≥ 18.
 - localStorage for saves (single save slot, key `isle-of-elden-save-v4` as of v0.2.2 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
-## Current mechanics (v0.2.4)
+## Current mechanics (v0.2.5)
+
+### Allocator sort order (v0.2.5)
+
+`findEligibleTile` sorts by **fertility DESC, distance ASC**. Fertile grass is picked before baseline grass even if further from town; among tiles of equal fertility the nearest wins. Wood/stone tiles always have `fertility = 0` so for them distance remains the effective primary. The previous v0.2.4 ordering (distance primary, fertility tiebreaker) meant the town tile always outranked fertile neighbors — the allocator would pile workers onto the town tile until its capacity filled before ever touching rich land nearby. Keep fertility as primary when tuning: the whole point of fertile-land mechanics is that the allocator steers toward them without the player micromanaging.
+
+
 
 ### Intro papyrus (v0.2.4)
 
