@@ -6,7 +6,13 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## Status
 
-**v0.2.9 — Balance tuning.** Early game is less punishing: starting food/wood/stone bumped, pops live longer (lifespan [10–15] up from [8–12]), and locust/wildfire events deal -6 instead of -8. The farming break-even model (1 farmer = 1 adult fed) is unchanged.
+**v0.3.0 — Morale.** A 0–100 settlement-wide mood stat. Starts at 80. Rises when the year goes well (food surplus, coming-of-age, bountiful harvests, births, newcomers) and falls when it doesn't (deficits, famine deaths, bandits, locusts, wildfires, elder deaths). It's a *lagging* indicator — no passive drift, so a quiet year leaves it where it is.
+
+### In v0.3.0
+- **"Mood" chip in the topbar** with green/gold/red colouring above 70 / 40 / below 40.
+- **Growth gate at 50.** Food surplus no longer automatically produces babies — if morale is below 50, growth stalls until things improve.
+- **Event biases.** Morale ≥ 80 doubles the `newcomers` event weight (thriving settlements attract wanderers). Morale ≤ 30 doubles the `bandits` weight (weakness attracts predators).
+- Save key bumped to `v9` (new `morale` state field).
 
 ### In v0.2.9
 - Starting resources: food 20→30, wood 10→18, stone 0→5

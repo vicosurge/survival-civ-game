@@ -233,7 +233,20 @@ function renderTopbar(state: GameState): void {
     resChip("Wood", state.wood, productionDelta(yields.wood)),
     resChip("Stone", state.stone, productionDelta(yields.stone)),
     resChip("Gold", state.gold),
+    moraleChip(state.morale),
   );
+}
+
+function moraleChip(morale: number): HTMLElement {
+  const tone = morale >= 70 ? "good" : morale >= 40 ? "mid" : "bad";
+  const span = document.createElement("span");
+  span.className = `res mood mood-${tone}`;
+  span.title =
+    morale >= 70 ? "High spirits — settlement thrives."
+    : morale >= 40 ? "Mood is uneasy — watch food and safety."
+    : "Morale is low — growth has stalled.";
+  span.innerHTML = `<span class="label">Mood</span><span class="value">${morale}</span>`;
+  return span;
 }
 
 function netDelta(net: number): { text: string; tone: "pos" | "neg" | "neutral" } {

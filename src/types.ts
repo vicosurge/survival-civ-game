@@ -88,6 +88,7 @@ export interface GameState {
   wood: number;
   stone: number;
   gold: number;
+  morale: number;      // 0–100; lagging indicator of how the settlement is faring
   tiles: Tile[][];
   town: { x: number; y: number };
   scouts: number;      // standalone — scouts don't occupy tiles
@@ -169,6 +170,16 @@ export const TRADE_RATES: Record<TradeAction, Record<TradeResource, number>> = {
 };
 export const TRADE_MAX_PER_VISIT = 5;
 
+// Morale — a 0–100 settlement-wide stat. Lagging indicator (no passive drift):
+// reflects how the year went, not an always-leaking bucket. Gates growth and
+// biases event rolls.
+export const MORALE_MIN = 0;
+export const MORALE_MAX = 100;
+export const MORALE_START = 80;
+export const MORALE_GROWTH_GATE = 50;       // births only fire at or above this
+export const MORALE_ATTRACT_THRESHOLD = 80; // at/above, newcomers event weight ×2
+export const MORALE_PREY_THRESHOLD = 30;    // at/below, bandits event weight ×2
+
 // One-time-purchase settlement upgrades. Each blocks a specific negative event
 // (see events.ts: blockedBy + blockedText). No durability; no multiples.
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
@@ -192,4 +203,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-elden-save-v8";
+export const SAVE_KEY = "isle-of-elden-save-v9";

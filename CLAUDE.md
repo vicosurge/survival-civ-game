@@ -33,10 +33,36 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage for saves (single save slot, key `isle-of-elden-save-v8` as of v0.2.8 — bump on breaking state-shape changes)
+- localStorage for saves (single save slot, key `isle-of-elden-save-v9` as of v0.3.0 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
-## Current mechanics (v0.2.9)
+## Current mechanics (v0.3.0)
+
+### Morale (v0.3.0)
+
+A settlement-wide 0–100 stat (`state.morale`, starts at `MORALE_START = 80`) that reflects how the year went. It is a **lagging indicator** — no passive drift; morale only moves in response to concrete events. Gates growth and biases the random-event roll.
+
+**Deltas (all clamped to 0–100 via `applyMorale` in `state.ts`):**
+- Food surplus after consumption: +2 / year. Food deficit: −3 / year.
+- Famine death: −5 per pop lost.
+- Old-age death: −1 per pop.
+- Coming-of-age: +2 per pop.
+- Birth: +2.
+- Events: bountiful +5, locusts −4, mild_winter +3, bandits (−7 on death, else −2), newcomers +4, forest_fire −3. Scripted waves: +2 per refugee.
+
+**Gates and biases:**
+- `MORALE_GROWTH_GATE = 50` — births only fire at or above this. Food surplus alone no longer guarantees growth.
+- `MORALE_ATTRACT_THRESHOLD = 80` — at or above, `newcomers` event weight is doubled in `adjustedWeight` (thriving settlements attract wanderers).
+- `MORALE_PREY_THRESHOLD = 30` — at or below, `bandits` event weight is doubled (desperate rumours travel, desperate people follow).
+
+**UI:** a "Mood" chip in the topbar after Gold, coloured via `.mood-good` (≥70 green), `.mood-mid` (40–69 gold), `.mood-bad` (<40 red) with a tooltip summary.
+
+**Design intent to preserve:**
+- **Lagging, not draining.** Morale is a reaction to what happened, not a bucket that leaks while the player is away. A quiet year leaves it where it is — boring is fine. This is to avoid the Sim-style "fight the decay meter" feel.
+- **Growth gate is the load-bearing effect.** The event biases are flavour; the mechanical consequence the player plans around is "no new babies if morale cracks." Don't add more gates (production, build, trade) without a fresh conversation — morale should stay narrow.
+- **Scripted-wave morale bump scales with refugees** so it stays in sync with the `newcomers` random event (both net +4 for two adults).
+- **Extension path:** religion / shrines (planned) will contribute morale; don't wire them into the random events table — add fresh helpers or a periodic step in `turn.ts`. Keep morale's inputs legible; don't let it become a catch-all score.
+- **SAVE_KEY bumped to `v9`** because `morale` is a new required field; v8 saves won't load.
 
 ### Balance tuning (v0.2.9)
 

@@ -1,6 +1,6 @@
 import { fireScriptedWave, rollEvent } from "./events";
 import { currentWorkers, exploreFrontier, findWorkerToRemove } from "./map";
-import { adultCount, childCount, makeBabyPop, makeNewcomerPop, totalPop } from "./state";
+import { adultCount, applyMorale, childCount, makeBabyPop, makeNewcomerPop, totalPop } from "./state";
 import {
   ADULT_AGE,
   BOAT_CREW_LOSS_CHANCE,
@@ -19,6 +19,7 @@ import {
   LogEntry,
   MAP_H,
   MAP_W,
+  MORALE_GROWTH_GATE,
   Pop,
   SCOUT_REVEAL_PER_YEAR,
   TRADE_MAX_PER_VISIT,
@@ -49,6 +50,7 @@ export function endYear(state: GameState): void {
   const comingOfAge = childrenBefore - childrenAfter;
 
   if (oldAgeDeaths > 0) {
+    applyMorale(state, -oldAgeDeaths);
     state.log.unshift({
       year,
       text: `${oldAgeDeaths} elder${oldAgeDeaths === 1 ? "" : "s"} pass${oldAgeDeaths === 1 ? "es" : ""} peacefully this year.`,
@@ -56,6 +58,7 @@ export function endYear(state: GameState): void {
     });
   }
   if (comingOfAge > 0) {
+    applyMorale(state, 2 * comingOfAge);
     state.log.unshift({
       year,
       text: `${comingOfAge} child${comingOfAge === 1 ? "" : "ren"} come${comingOfAge === 1 ? "s" : ""} of age. (+${comingOfAge} idle adult${comingOfAge === 1 ? "" : "s"})`,
@@ -189,6 +192,9 @@ export function endYear(state: GameState): void {
   const adults = adultCount(state);
   const kids = childCount(state);
   const eaten = adults * FOOD_PER_ADULT + kids * FOOD_PER_CHILD;
+  const foodNet = state.food - eaten;
+  if (foodNet > 0) applyMorale(state, 2);
+  else if (foodNet < 0) applyMorale(state, -3);
   state.food -= eaten;
   if (state.food < 0) {
     let shortfall = -state.food;
@@ -209,6 +215,7 @@ export function endYear(state: GameState): void {
         shortfall -= FOOD_PER_CHILD;
       }
     }
+    applyMorale(state, -5 * (childDeaths + adultDeaths));
     const parts: string[] = [];
     if (childDeaths > 0) parts.push(`${childDeaths} child${childDeaths === 1 ? "" : "ren"}`);
     if (adultDeaths > 0) parts.push(`${adultDeaths} adult${adultDeaths === 1 ? "" : "s"}`);
@@ -222,9 +229,15 @@ export function endYear(state: GameState): void {
   // 6. Reconcile assignments with current adult population.
   reconcileAllocation(state);
 
-  // 7. Growth — need 1.5 years of food reserve per pop to absorb a new mouth.
-  if (totalPop(state) > 0 && state.food >= totalPop(state) * 3) {
+  // 7. Growth — need 1.5 years of food reserve per pop, and morale above the
+  //    growth gate. Low morale means no new babies this year.
+  if (
+    totalPop(state) > 0 &&
+    state.food >= totalPop(state) * 3 &&
+    state.morale >= MORALE_GROWTH_GATE
+  ) {
     state.pops.push(makeBabyPop());
+    applyMorale(state, 2);
     state.log.unshift({
       year,
       text: "A child is born into the settlement. They will not work for some years yet.",

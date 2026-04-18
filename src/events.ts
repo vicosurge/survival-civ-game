@@ -1,6 +1,14 @@
 import { exploreFrontier } from "./map";
-import { makeNewcomerPop } from "./state";
-import { BuildingId, GameState, LogEntry, SCRIPTED_WAVE_REFUGEES, ScriptedWaveId } from "./types";
+import { applyMorale, makeNewcomerPop } from "./state";
+import {
+  BuildingId,
+  GameState,
+  LogEntry,
+  MORALE_ATTRACT_THRESHOLD,
+  MORALE_PREY_THRESHOLD,
+  SCRIPTED_WAVE_REFUGEES,
+  ScriptedWaveId,
+} from "./types";
 
 interface EventDef {
   id: string;
@@ -29,6 +37,7 @@ const EVENTS: EventDef[] = [
     weight: 10,
     apply: (s) => {
       s.food += 10;
+      applyMorale(s, 5);
       return {
         year: s.year,
         text: "A bountiful harvest. Granaries overflow. (+10 food)",
@@ -44,6 +53,7 @@ const EVENTS: EventDef[] = [
     apply: (s) => {
       const lost = Math.min(6, s.food);
       s.food -= lost;
+      applyMorale(s, -4);
       return {
         year: s.year,
         text: `Locusts ravage the fields. (-${lost} food)`,
@@ -66,11 +76,14 @@ const EVENTS: EventDef[] = [
   {
     id: "mild_winter",
     weight: 7,
-    apply: (s) => ({
-      year: s.year,
-      text: "A mild winter. Spirits are high around the hearths.",
-      tone: "good",
-    }),
+    apply: (s) => {
+      applyMorale(s, 3);
+      return {
+        year: s.year,
+        text: "A mild winter. Spirits are high around the hearths.",
+        tone: "good",
+      };
+    },
   },
   {
     id: "bandits",
@@ -82,6 +95,7 @@ const EVENTS: EventDef[] = [
       s.gold -= goldLost;
       const adults = s.pops.filter((p) => p.age >= 4).length;
       const popLost = adults > 2 ? removePops(s, 1, "adult") : 0;
+      applyMorale(s, popLost > 0 ? -7 : -2);
       return {
         year: s.year,
         text: popLost > 0
@@ -109,6 +123,7 @@ const EVENTS: EventDef[] = [
     weight: 6,
     apply: (s) => {
       s.pops.push(makeNewcomerPop(), makeNewcomerPop());
+      applyMorale(s, 4);
       return {
         year: s.year,
         text: "Two wanderers arrive seeking refuge. You take them in. (+2 adults)",
@@ -124,6 +139,7 @@ const EVENTS: EventDef[] = [
     apply: (s) => {
       const lost = Math.min(6, s.wood);
       s.wood -= lost;
+      applyMorale(s, -3);
       return {
         year: s.year,
         text: `Wildfire sweeps the timber yards. (-${lost} wood)`,
@@ -179,17 +195,25 @@ const SCRIPTED_WAVE_TEXT: Record<ScriptedWaveId, string> = {
 
 export function fireScriptedWave(state: GameState, id: ScriptedWaveId): LogEntry {
   for (let i = 0; i < SCRIPTED_WAVE_REFUGEES; i++) state.pops.push(makeNewcomerPop());
+  applyMorale(state, 2 * SCRIPTED_WAVE_REFUGEES);
   return { year: state.year, text: SCRIPTED_WAVE_TEXT[id], tone: "neutral" };
 }
 
+function adjustedWeight(ev: EventDef, state: GameState): number {
+  if (ev.id === "newcomers" && state.morale >= MORALE_ATTRACT_THRESHOLD) return ev.weight * 2;
+  if (ev.id === "bandits" && state.morale <= MORALE_PREY_THRESHOLD) return ev.weight * 2;
+  return ev.weight;
+}
+
 export function rollEvent(state: GameState): LogEntry {
-  const totalWeight = EVENTS.reduce((sum, e) => sum + e.weight, 0);
+  const weights = EVENTS.map((ev) => adjustedWeight(ev, state));
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   let r = Math.random() * totalWeight;
   let chosen: EventDef = EVENTS[EVENTS.length - 1];
-  for (const ev of EVENTS) {
-    r -= ev.weight;
+  for (let i = 0; i < EVENTS.length; i++) {
+    r -= weights[i];
     if (r <= 0) {
-      chosen = ev;
+      chosen = EVENTS[i];
       break;
     }
   }

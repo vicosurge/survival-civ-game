@@ -70,6 +70,11 @@ html, body {
 .res .delta.neg { color: var(--danger); }
 .res .delta.neutral { color: var(--muted); }
 
+.res.mood .value { min-width: 3ch; }
+.res.mood-good .value { color: var(--good); }
+.res.mood-mid .value { color: var(--gold); }
+.res.mood-bad .value { color: var(--danger); }
+
 #main {
   display: flex;
   flex: 1;

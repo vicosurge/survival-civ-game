@@ -6,6 +6,9 @@ import {
   GameState,
   Job,
   LIFESPAN_RANGE,
+  MORALE_MAX,
+  MORALE_MIN,
+  MORALE_START,
   NEWCOMER_AGE_RANGE,
   Pop,
   SAVE_KEY,
@@ -74,6 +77,7 @@ export function newGame(): GameState {
     wood: 18,
     stone: 5,
     gold: 5,
+    morale: MORALE_START,
     tiles,
     town,
     scouts: 1,
@@ -132,6 +136,10 @@ export function loadGame(): GameState | null {
 
 export function clearSave(): void {
   localStorage.removeItem(SAVE_KEY);
+}
+
+export function applyMorale(state: GameState, delta: number): void {
+  state.morale = Math.max(MORALE_MIN, Math.min(MORALE_MAX, state.morale + delta));
 }
 
 export function totalPop(state: GameState): number {
