@@ -42,7 +42,7 @@ const EVENTS: EventDef[] = [
     blockedBy: "granary",
     blockedText: "Locusts descend on the fields, but the granary stores hold firm. (Averted)",
     apply: (s) => {
-      const lost = Math.min(8, s.food);
+      const lost = Math.min(6, s.food);
       s.food -= lost;
       return {
         year: s.year,
@@ -122,7 +122,7 @@ const EVENTS: EventDef[] = [
     blockedBy: "well",
     blockedText: "A blaze threatens the timber yards, but bucket crews from the well douse it before it spreads. (Averted)",
     apply: (s) => {
-      const lost = Math.min(8, s.wood);
+      const lost = Math.min(6, s.wood);
       s.wood -= lost;
       return {
         year: s.year,
