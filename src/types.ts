@@ -1,0 +1,129 @@
+export type Terrain = "water" | "beach" | "grass" | "forest" | "stone" | "mountain";
+
+export type Job = "farmer" | "woodcutter" | "quarryman" | "scout";
+
+export const JOBS: Job[] = ["farmer", "woodcutter", "quarryman", "scout"];
+
+export const JOB_LABEL: Record<Job, string> = {
+  farmer: "Farmer",
+  woodcutter: "Woodcutter",
+  quarryman: "Quarryman",
+  scout: "Scout",
+};
+
+// What the tile is today. `wild` = untouched terrain. `cultivating` = a worker has
+// been assigned but it takes one year to become productive. `worked` = fully
+// converted (farmland / logging camp / quarry). `fallow` = worked but abandoned —
+// reverts to wild after 2 years of neglect. `exhausted` = forest/quarry drained dry
+// (permanent in v0.2).
+export type TileState = "wild" | "cultivating" | "worked" | "fallow" | "exhausted";
+
+// Maps production jobs to the terrain they work. Scouts don't occupy tiles.
+export const JOB_TERRAIN: Record<Exclude<Job, "scout">, Terrain> = {
+  farmer: "grass",
+  woodcutter: "forest",
+  quarryman: "stone",
+};
+
+export interface Tile {
+  terrain: Terrain;
+  discovered: boolean;
+  state: TileState;
+  capacity: number;    // max workers this tile can hold; 0 for non-workable terrain
+  workers: number;     // currently assigned workers (0..capacity)
+  reserve: number;     // remaining resource units (forest wood / quarry stone); 0 for grass
+  fertility: number;   // grass tiles only: +0 normal, +1 fertile — adds to per-worker farmer yield
+  yearsInState: number; // how long in current state — drives cultivating→worked and fallow→wild
+}
+
+export interface LogEntry {
+  year: number;
+  text: string;
+  tone: "neutral" | "good" | "bad";
+}
+
+// A single "pop" is a Stellaris-style abstract unit — not a literal person, but a
+// cohort that ages, matures, and eventually dies. Children can't work.
+export interface Pop {
+  age: number;
+  lifespan: number;
+}
+
+// The rescue boat. The settlers arrived in it; now it can be dispatched to
+// comb the region for other refugees of the same war. While at sea, the crew
+// is held here (not in state.pops) so they don't consume food at home.
+export interface Boat {
+  status: "docked" | "voyage";
+  returnYear: number | null;  // end-of-year on which the voyage resolves
+  crew: Pop[];                // 2 adults if on voyage; empty when docked
+}
+
+export interface GameState {
+  year: number;
+  pops: Pop[];         // replaces the flat population counter
+  food: number;
+  wood: number;
+  stone: number;
+  gold: number;
+  tiles: Tile[][];
+  town: { x: number; y: number };
+  scouts: number;      // standalone — scouts don't occupy tiles
+  boat: Boat;
+  log: LogEntry[];
+  gameOver: boolean;
+  selectedTile: { x: number; y: number } | null;
+}
+
+export const MAP_W = 20;
+export const MAP_H = 15;
+export const TILE_SIZE = 32;
+
+export const ADULT_AGE = 4;
+export const LIFESPAN_RANGE: [number, number] = [8, 12];
+// Starter pops are a spread of adult ages so they don't all die in the same year.
+export const STARTER_AGE_RANGE: [number, number] = [4, 7];
+// Newcomer events arrive as fresh adults partway through life.
+export const NEWCOMER_AGE_RANGE: [number, number] = [4, 7];
+
+export const FOOD_PER_ADULT = 2;
+export const FOOD_PER_CHILD = 1;
+
+// Per-worker yields when the tile is in `worked` state. Flat rates; tile capacity
+// limits *how many workers fit*, not the rate per worker.
+export const YIELD_PER_WORKER: Record<Exclude<Job, "scout">, number> = {
+  farmer: 2,
+  woodcutter: 2,
+  quarryman: 1,
+};
+
+export const SCOUT_REVEAL_PER_YEAR = 2;
+
+export const BOAT_CREW_SIZE: number = 2;
+export const BOAT_VOYAGE_YEARS: number = 2;
+// Refugee return distribution: weighted rolls for 0/1/2/3 survivors found.
+export const BOAT_REFUGEE_WEIGHTS: [number, number, number, number] = [2, 4, 3, 1];
+// Per-crew chance of being lost at sea (rough seas, bandit galleys, bad luck).
+export const BOAT_CREW_LOSS_CHANCE = 0.1;
+
+// Random capacity ranges when generating the island.
+export const CAPACITY_RANGE: Record<"grass" | "forest" | "stone", [number, number]> = {
+  grass: [2, 8],
+  forest: [2, 6],
+  stone: [1, 4],
+};
+
+// Hidden resource reserves for depletable tiles.
+export const RESERVE_RANGE: Record<"forest" | "stone", [number, number]> = {
+  forest: [30, 120],
+  stone: [60, 240],
+};
+
+export const BASE_REACH = 3;       // tiles within this Chebyshev distance of town are always in reach
+export const WORKED_REACH = 1;     // additionally, tiles within this distance of any worked tile are in reach
+export const FALLOW_REVERT_YEARS = 2;
+export const CULTIVATION_YEARS = 1;
+
+// Fraction of grass tiles that roll fertile (+1 food per farmer per year).
+export const FERTILE_GRASS_CHANCE = 0.3;
+
+export const SAVE_KEY = "isle-of-elden-save-v5";

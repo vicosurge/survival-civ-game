@@ -1,0 +1,218 @@
+:root {
+  --bg: #1a1410;
+  --panel: #2b2117;
+  --panel-edge: #4a3a28;
+  --ink: #e8d9b8;
+  --muted: #a89877;
+  --gold: #d4a94a;
+  --danger: #c75a4a;
+  --good: #7ab558;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Courier New", Courier, monospace;
+  height: 100%;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid var(--panel-edge);
+  background: var(--panel);
+}
+
+#topbar h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--gold);
+  letter-spacing: 0.05em;
+}
+
+#year-display {
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+#resources {
+  display: flex;
+  gap: 1rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.res {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.res .label { color: var(--muted); }
+.res .value { color: var(--ink); font-weight: bold; min-width: 2ch; text-align: right; }
+.res .delta { font-size: 0.8rem; }
+.res .delta.pos { color: var(--good); }
+.res .delta.neg { color: var(--danger); }
+.res .delta.neutral { color: var(--muted); }
+
+#main {
+  display: flex;
+  flex: 1;
+  gap: 1rem;
+  padding: 1rem;
+  min-height: 0;
+}
+
+#map {
+  background: #0d1418;
+  border: 2px solid var(--panel-edge);
+  image-rendering: pixelated;
+  flex-shrink: 0;
+  cursor: crosshair;
+}
+
+#sidebar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 280px;
+  max-width: 420px;
+}
+
+#sidebar section {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  padding: 0.75rem;
+}
+
+#sidebar h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.95rem;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+#villager-summary {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.job-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.job-row .name { font-size: 0.9rem; }
+.job-row .count { min-width: 2ch; text-align: center; color: var(--gold); font-weight: bold; }
+
+.job-row button {
+  background: var(--panel-edge);
+  color: var(--ink);
+  border: none;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.job-row button:hover:not(:disabled) { background: #5c4933; }
+.job-row button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+#ship-panel {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+#ship-panel .ship-status { color: var(--muted); margin-bottom: 0.4rem; }
+#ship-panel .ship-status strong { color: var(--ink); font-weight: bold; }
+#ship-panel button {
+  width: 100%;
+  padding: 0.4rem;
+  background: var(--panel-edge);
+  color: var(--ink);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+#ship-panel button:hover:not(:disabled) { background: #5c4933; }
+#ship-panel button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#tile-info {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+#tile-info .hint { color: var(--muted); font-style: italic; }
+#tile-info .tile-title { color: var(--gold); font-weight: bold; margin-bottom: 0.25rem; }
+#tile-info .tile-title .coord { color: var(--muted); font-weight: normal; font-size: 0.8rem; margin-left: 0.3rem; }
+#tile-info .tile-state { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.4rem; }
+#tile-info .muted { color: var(--muted); }
+#tile-info .fertile { color: var(--good); }
+
+#log-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#log {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.log-entry {
+  padding: 0.4rem 0;
+  border-bottom: 1px dashed var(--panel-edge);
+}
+.log-entry .year { color: var(--gold); font-weight: bold; }
+.log-entry.good { color: var(--good); }
+.log-entry.bad { color: var(--danger); }
+
+#turn-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+#turn-controls button {
+  flex: 1;
+  padding: 0.75rem;
+  background: var(--gold);
+  color: #1a1410;
+  border: none;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+
+#turn-controls button:hover { background: #e8c060; }
+#turn-controls button.secondary {
+  background: var(--panel-edge);
+  color: var(--ink);
+}
+#turn-controls button.secondary:hover { background: #5c4933; }

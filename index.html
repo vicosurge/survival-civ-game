@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Isle of Elden — A Settler's Chronicle</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar">
+        <h1>Isle of Elden</h1>
+        <div id="year-display">Year 1</div>
+        <div id="resources"></div>
+      </header>
+
+      <main id="main">
+        <canvas id="map" width="640" height="480"></canvas>
+
+        <aside id="sidebar">
+          <section id="allocation">
+            <h2>Villagers</h2>
+            <div id="villager-summary"></div>
+            <div id="job-controls"></div>
+          </section>
+
+          <section id="ship-section">
+            <h2>Ship</h2>
+            <div id="ship-panel"></div>
+          </section>
+
+          <section id="tile-section">
+            <h2>Tile</h2>
+            <div id="tile-info"><div class="hint">Click a tile to inspect it.</div></div>
+          </section>
+
+          <section id="log-section">
+            <h2>Chronicle</h2>
+            <div id="log"></div>
+          </section>
+
+          <div id="turn-controls">
+            <button id="end-turn-btn">End Year</button>
+            <button id="new-game-btn" class="secondary">New Game</button>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
