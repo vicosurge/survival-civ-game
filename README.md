@@ -6,10 +6,14 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## Status
 
-**v0.2.7 — Interactive merchants.** The merchant event no longer auto-takes food and auto-pays gold. Instead, a parchment-style trade panel appears when merchants arrive, offering one trade per visit: buy or sell food, wood, or stone at asymmetric rates (sell at 1g, buy at 2g; stone double that). You can decline without penalty. End Year is blocked until you resolve the visit.
+**v0.2.8 — Buildings.** Three one-time settlement upgrades give negative events a counter: a **granary** blocks locusts, a **palisade** blocks bandits, a **well** blocks wildfires. Buying them drains food/wood/stone, giving your surplus somewhere to go and a reason to keep woodcutters and quarrymen in rotation.
+
+### In v0.2.8
+- **Buildings sidebar.** New section under Villagers listing each upgrade with its cost and a Build button. Built ones show checked, with a green border.
+- **Event blockers.** When a blocked event rolls, the chronicle shows an "averted" log entry instead of the damage — so you see your investment earning its keep. Costs: Granary 30 food + 15 wood, Palisade 20 wood + 25 stone, Well 10 wood + 15 stone. Save key bumped to `v8` (new `buildings` state field).
 
 ### In v0.2.7
-- **Merchant trade modal.** Pick one of six trade options, dial in 1–5 units, then Trade or Decline. Rates: sell food/wood at 1g each, stone at 2g each; buy food/wood at 2g each, stone at 4g each. Cap of 5 units per visit. Save key bumped to `v7` (new `pendingMerchant` state field).
+- **Merchant trade modal.** Pick one of six trade options, dial in 1–5 units, then Trade or Decline. Rates: sell food/wood at 1g each, stone at 2g each; buy food/wood at 2g each, stone at 4g each. Cap of 5 units per visit.
 
 ### In v0.2.6
 - **Three scripted Exarum waves.** Target years 5 / 10 / 20 with ±3-year jitter rolled at New Game. Each wave spawns 2 adult refugees and a lore entry; the wave replaces the random event for that year. Old saves are invalidated (SAVE_KEY bumped to `v6`).

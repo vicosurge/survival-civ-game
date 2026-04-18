@@ -80,6 +80,7 @@ export function newGame(): GameState {
     boat: { status: "docked", returnYear: null, crew: [] },
     scriptedWaves: rollScriptedWaves(),
     pendingMerchant: false,
+    buildings: { granary: false, palisade: false, well: false },
     log: [
       {
         year: 1,

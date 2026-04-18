@@ -140,6 +140,71 @@ html, body {
 .job-row button:hover:not(:disabled) { background: #5c4933; }
 .job-row button:disabled { opacity: 0.3; cursor: not-allowed; }
 
+#buildings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.building-row {
+  padding: 0.4rem 0.5rem;
+  background: rgba(74, 58, 40, 0.35);
+  border-left: 2px solid var(--panel-edge);
+  font-size: 0.85rem;
+}
+.building-row.built {
+  border-left-color: var(--good);
+  background: rgba(122, 181, 88, 0.08);
+}
+
+.building-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.building-head .building-name {
+  flex: 1;
+  color: var(--ink);
+  font-weight: bold;
+}
+.building-row.built .building-name { color: var(--good); }
+
+.building-head button {
+  background: var(--gold);
+  color: #1a1410;
+  border: none;
+  padding: 0.2rem 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+}
+.building-head button:hover:not(:disabled) { background: #e8c060; }
+.building-head button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.building-desc {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+.building-cost {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  flex-wrap: wrap;
+}
+.cost-chip {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+  background: rgba(26, 20, 16, 0.5);
+  border: 1px solid var(--panel-edge);
+}
+.cost-chip.ok { color: var(--good); }
+.cost-chip.short { color: var(--danger); }
+
 #ship-panel {
   font-size: 0.85rem;
   line-height: 1.5;

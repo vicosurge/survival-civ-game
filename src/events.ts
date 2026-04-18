@@ -1,10 +1,12 @@
 import { exploreFrontier } from "./map";
 import { makeNewcomerPop } from "./state";
-import { GameState, LogEntry, SCRIPTED_WAVE_REFUGEES, ScriptedWaveId } from "./types";
+import { BuildingId, GameState, LogEntry, SCRIPTED_WAVE_REFUGEES, ScriptedWaveId } from "./types";
 
 interface EventDef {
   id: string;
   weight: number;
+  blockedBy?: BuildingId;
+  blockedText?: string;
   apply: (state: GameState) => LogEntry;
 }
 
@@ -37,6 +39,8 @@ const EVENTS: EventDef[] = [
   {
     id: "locusts",
     weight: 8,
+    blockedBy: "granary",
+    blockedText: "Locusts descend on the fields, but the granary stores hold firm. (Averted)",
     apply: (s) => {
       const lost = Math.min(8, s.food);
       s.food -= lost;
@@ -71,6 +75,8 @@ const EVENTS: EventDef[] = [
   {
     id: "bandits",
     weight: 7,
+    blockedBy: "palisade",
+    blockedText: "Bandits from the highlands test the new palisade and withdraw empty-handed. (Averted)",
     apply: (s) => {
       const goldLost = Math.min(5, s.gold);
       s.gold -= goldLost;
@@ -113,6 +119,8 @@ const EVENTS: EventDef[] = [
   {
     id: "forest_fire",
     weight: 5,
+    blockedBy: "well",
+    blockedText: "A blaze threatens the timber yards, but bucket crews from the well douse it before it spreads. (Averted)",
     apply: (s) => {
       const lost = Math.min(8, s.wood);
       s.wood -= lost;
@@ -177,9 +185,16 @@ export function fireScriptedWave(state: GameState, id: ScriptedWaveId): LogEntry
 export function rollEvent(state: GameState): LogEntry {
   const totalWeight = EVENTS.reduce((sum, e) => sum + e.weight, 0);
   let r = Math.random() * totalWeight;
+  let chosen: EventDef = EVENTS[EVENTS.length - 1];
   for (const ev of EVENTS) {
     r -= ev.weight;
-    if (r <= 0) return ev.apply(state);
+    if (r <= 0) {
+      chosen = ev;
+      break;
+    }
   }
-  return EVENTS[EVENTS.length - 1].apply(state);
+  if (chosen.blockedBy && state.buildings[chosen.blockedBy]) {
+    return { year: state.year, text: chosen.blockedText!, tone: "good" };
+  }
+  return chosen.apply(state);
 }

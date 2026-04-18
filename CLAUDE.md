@@ -33,10 +33,29 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage for saves (single save slot, key `isle-of-elden-save-v7` as of v0.2.7 — bump on breaking state-shape changes)
+- localStorage for saves (single save slot, key `isle-of-elden-save-v8` as of v0.2.8 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
-## Current mechanics (v0.2.7)
+## Current mechanics (v0.2.8)
+
+### Buildings (v0.2.8)
+
+One-time-purchase settlement upgrades declared in `types.ts:BUILDINGS`. Each has a resource cost and (via the events table) blocks a specific negative event. `state.buildings: Record<BuildingId, boolean>` tracks what's built. UI lives in a dedicated sidebar section below Villagers (`#buildings-section`); clicking Build calls `build()` in `turn.ts` which subtracts resources and flips the flag.
+
+**The three starter buildings:**
+| Building | Cost | Blocks |
+|---|---|---|
+| Granary | 30 food, 15 wood | locusts |
+| Palisade | 20 wood, 25 stone | bandits |
+| Well | 10 wood, 15 stone | forest_fire |
+
+**Blocker mechanism:** events carry optional `blockedBy: BuildingId` + `blockedText: string`. `rollEvent` picks normally, then if the chosen event is blocked, returns the `blockedText` as a "good" tone log and skips the `apply`. The blocked roll still consumes the year's event slot — the "averted" chronicle line *is* the event — which is narratively satisfying (the player sees their investment pay off) and keeps the turn pipeline unchanged.
+
+**Design intent to preserve:**
+- **Granary cost uses food deliberately.** It's the one sink for excess food early — gives food surplus somewhere to go instead of dead-weighting the stockpile. Palisade and Well need wood+stone, which forces redeploying farmers into woodcutters/quarrymen. This is the deliberate answer to "farming-only settlements have nothing to do with surplus" from Vicente's Y50 playtest.
+- **One-time purchase, no durability.** Buildings don't wear out or get destroyed. Keep it that way unless we add a raid-escalation mechanic that specifically targets structures — otherwise it's bookkeeping without payoff.
+- **Extension path:** adding a building = add a `BuildingId`, append to `BUILDINGS` table, optionally tag an event with `blockedBy` + `blockedText`. No turn.ts or UI churn. Future buildings may not block events at all (e.g. a watchtower that extends reach, a market that improves trade rates) — the blocker is one effect among many; don't couple the system to it.
+- **SAVE_KEY bumped to `v8`** because `buildings` is a new required field; v7 saves won't load.
 
 ### Merchant trade modal (v0.2.7)
 

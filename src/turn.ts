@@ -7,6 +7,8 @@ import {
   BOAT_CREW_SIZE,
   BOAT_REFUGEE_WEIGHTS,
   BOAT_VOYAGE_YEARS,
+  BUILDINGS,
+  BuildingId,
   CULTIVATION_YEARS,
   FALLOW_REVERT_YEARS,
   FOOD_PER_ADULT,
@@ -344,6 +346,33 @@ export function declineTrade(state: GameState): LogEntry {
     text: "You wave the merchants on. They pack their wares and continue up the coast.",
     tone: "neutral",
   };
+}
+
+export function canBuild(state: GameState, id: BuildingId): boolean {
+  if (state.gameOver) return false;
+  if (state.buildings[id]) return false;
+  const cost = BUILDINGS[id].cost;
+  if ((cost.food ?? 0) > state.food) return false;
+  if ((cost.wood ?? 0) > state.wood) return false;
+  if ((cost.stone ?? 0) > state.stone) return false;
+  if ((cost.gold ?? 0) > state.gold) return false;
+  return true;
+}
+
+export function build(state: GameState, id: BuildingId): void {
+  if (!canBuild(state, id)) return;
+  const def = BUILDINGS[id];
+  const cost = def.cost;
+  state.food -= cost.food ?? 0;
+  state.wood -= cost.wood ?? 0;
+  state.stone -= cost.stone ?? 0;
+  state.gold -= cost.gold ?? 0;
+  state.buildings[id] = true;
+  state.log.unshift({
+    year: state.year,
+    text: `${def.name} complete — ${def.description}`,
+    tone: "good",
+  });
 }
 
 export function canDispatchBoat(state: GameState): boolean {

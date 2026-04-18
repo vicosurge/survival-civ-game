@@ -72,6 +72,15 @@ export interface ScriptedWave {
 export type TradeAction = "sell" | "buy";
 export type TradeResource = "food" | "wood" | "stone";
 
+export type BuildingId = "granary" | "palisade" | "well";
+
+export interface BuildingDef {
+  id: BuildingId;
+  name: string;
+  description: string;
+  cost: { food?: number; wood?: number; stone?: number; gold?: number };
+}
+
 export interface GameState {
   year: number;
   pops: Pop[];         // replaces the flat population counter
@@ -85,6 +94,7 @@ export interface GameState {
   boat: Boat;
   scriptedWaves: ScriptedWave[];
   pendingMerchant: boolean;  // merchant visit awaiting trade/decline — blocks end-year
+  buildings: Record<BuildingId, boolean>;
   log: LogEntry[];
   gameOver: boolean;
   selectedTile: { x: number; y: number } | null;
@@ -159,4 +169,27 @@ export const TRADE_RATES: Record<TradeAction, Record<TradeResource, number>> = {
 };
 export const TRADE_MAX_PER_VISIT = 5;
 
-export const SAVE_KEY = "isle-of-elden-save-v7";
+// One-time-purchase settlement upgrades. Each blocks a specific negative event
+// (see events.ts: blockedBy + blockedText). No durability; no multiples.
+export const BUILDINGS: Record<BuildingId, BuildingDef> = {
+  granary: {
+    id: "granary",
+    name: "Granary",
+    description: "A sealed storehouse. Blocks locusts.",
+    cost: { food: 30, wood: 15 },
+  },
+  palisade: {
+    id: "palisade",
+    name: "Palisade",
+    description: "A wooden wall ringing the settlement. Blocks bandit raids.",
+    cost: { wood: 20, stone: 25 },
+  },
+  well: {
+    id: "well",
+    name: "Well",
+    description: "A stone-lined well beside the timber yards. Blocks wildfires.",
+    cost: { wood: 10, stone: 15 },
+  },
+};
+
+export const SAVE_KEY = "isle-of-elden-save-v8";

@@ -2,6 +2,8 @@ import { findEligibleTile, findWorkerToRemove, totalReachableCapacity } from "./
 import { adultCount, childCount, idleCount, jobCount, projectedYields, totalPop } from "./state";
 import {
   assignWorker,
+  build,
+  canBuild,
   canDispatchBoat,
   canExecuteTrade,
   declineTrade,
@@ -11,6 +13,9 @@ import {
 } from "./turn";
 import {
   BOAT_CREW_SIZE,
+  BUILDINGS,
+  BuildingDef,
+  BuildingId,
   GameState,
   Job,
   JOBS,
@@ -87,6 +92,7 @@ export function attachCanvasClick(
 export function renderUI(state: GameState, onAllocChange: () => void): void {
   renderTopbar(state);
   renderAllocation(state, onAllocChange);
+  renderBuildingsPanel(state, onAllocChange);
   renderShipPanel(state, onAllocChange);
   renderTileInfo(state);
   renderLog(state);
@@ -315,6 +321,77 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
 
   row.append(name, minus, countEl, plus);
   return row;
+}
+
+function renderBuildingsPanel(state: GameState, onChange: () => void): void {
+  const panel = document.getElementById("buildings-panel")!;
+  panel.innerHTML = "";
+  const ids = Object.keys(BUILDINGS) as BuildingId[];
+  for (const id of ids) {
+    panel.appendChild(buildingRow(state, BUILDINGS[id], onChange));
+  }
+}
+
+function buildingRow(state: GameState, def: BuildingDef, onChange: () => void): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "building-row";
+  const built = state.buildings[def.id];
+
+  if (built) {
+    row.classList.add("built");
+    row.innerHTML = `
+      <div class="building-head">
+        <span class="building-name">✓ ${def.name}</span>
+      </div>
+      <div class="building-desc">${def.description}</div>
+    `;
+    return row;
+  }
+
+  const head = document.createElement("div");
+  head.className = "building-head";
+  const name = document.createElement("span");
+  name.className = "building-name";
+  name.textContent = def.name;
+  const btn = document.createElement("button");
+  btn.textContent = "Build";
+  btn.disabled = !canBuild(state, def.id);
+  btn.addEventListener("click", () => {
+    build(state, def.id);
+    onChange();
+  });
+  head.append(name, btn);
+
+  const desc = document.createElement("div");
+  desc.className = "building-desc";
+  desc.textContent = def.description;
+
+  const costLine = document.createElement("div");
+  costLine.className = "building-cost";
+  costLine.append(...costChips(state, def));
+
+  row.append(head, desc, costLine);
+  return row;
+}
+
+function costChips(state: GameState, def: BuildingDef): HTMLElement[] {
+  const chips: HTMLElement[] = [];
+  const entries: Array<["food" | "wood" | "stone" | "gold", string]> = [
+    ["food", "Food"],
+    ["wood", "Wood"],
+    ["stone", "Stone"],
+    ["gold", "Gold"],
+  ];
+  for (const [key, label] of entries) {
+    const amount = def.cost[key];
+    if (!amount) continue;
+    const have = state[key];
+    const chip = document.createElement("span");
+    chip.className = `cost-chip ${have >= amount ? "ok" : "short"}`;
+    chip.textContent = `${amount} ${label}`;
+    chips.push(chip);
+  }
+  return chips;
 }
 
 function renderShipPanel(state: GameState, onChange: () => void): void {
