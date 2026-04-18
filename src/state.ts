@@ -79,6 +79,7 @@ export function newGame(): GameState {
     scouts: 1,
     boat: { status: "docked", returnYear: null, crew: [] },
     scriptedWaves: rollScriptedWaves(),
+    pendingMerchant: false,
     log: [
       {
         year: 1,

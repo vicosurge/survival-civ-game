@@ -33,10 +33,23 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage for saves (single save slot, key `isle-of-elden-save-v4` as of v0.2.2 — bump on breaking state-shape changes)
+- localStorage for saves (single save slot, key `isle-of-elden-save-v7` as of v0.2.7 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
-## Current mechanics (v0.2.6)
+## Current mechanics (v0.2.7)
+
+### Merchant trade modal (v0.2.7)
+
+The random `merchants` event no longer auto-trades. When it rolls, it sets `state.pendingMerchant = true` and logs a neutral arrival line; `maybeShowTradeModal` (called from `redraw()` in `main.ts`) then opens a parchment-style overlay (`#trade-overlay`) that lets the player pick one action (buy/sell × food/wood/stone), dial quantity 1–`TRADE_MAX_PER_VISIT` (5), and either Trade or Decline. `executeTrade`/`declineTrade` in `turn.ts` clear the flag and append a log entry.
+
+**Rates** (`TRADE_RATES` in `types.ts`): sell food/wood at 1 gold each, stone at 2 gold each; buy food/wood at 2 gold each, stone at 4 gold each. Asymmetric by design — merchants are not a neutral market, they take their cut. Stone is double because it's the slowest resource to produce.
+
+**Design intent to preserve:**
+- **End Year is blocked** while `pendingMerchant` is true. The turn button re-labels to "Merchants waiting…" and disables. This keeps the chronicle ordering clean (the trade is resolved in the same year the merchants arrived) and prevents the player from silently "skipping" the visit by spamming End Year.
+- **One trade per visit.** The cap of 5 units per visit combined with a single action per visit is what keeps merchants from becoming an infinite-liquidity exploit. Don't add "trade again" — the constraint is the point.
+- **Decline costs nothing.** The player should be able to shake their head at bad prices without penalty; the strategic tension is "do I spend gold on stone now or wait for a cheaper visit that may never come."
+- **Flag-based pause, not async/await.** `pendingMerchant` is a boolean on state that the modal closes by mutating state + calling the caller's redraw callback. This keeps the turn pipeline synchronous and the save format plain JSON. If future events need the same pause semantics (e.g. a raid-or-pay-tribute choice), add a similar flag rather than introducing a Promise-driven turn loop.
+- **SAVE_KEY bumped to `v7`** because `pendingMerchant` is a new required field; v6 saves won't load.
 
 ### Scripted Exarum-survivor waves (v0.2.6)
 

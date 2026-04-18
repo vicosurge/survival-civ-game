@@ -1,7 +1,29 @@
 import { findEligibleTile, findWorkerToRemove, totalReachableCapacity } from "./map";
 import { adultCount, childCount, idleCount, jobCount, projectedYields, totalPop } from "./state";
-import { assignWorker, canDispatchBoat, dispatchBoat, unassignWorker } from "./turn";
-import { BOAT_CREW_SIZE, GameState, Job, JOBS, JOB_LABEL, MAP_H, MAP_W, Tile, TILE_SIZE } from "./types";
+import {
+  assignWorker,
+  canDispatchBoat,
+  canExecuteTrade,
+  declineTrade,
+  dispatchBoat,
+  executeTrade,
+  unassignWorker,
+} from "./turn";
+import {
+  BOAT_CREW_SIZE,
+  GameState,
+  Job,
+  JOBS,
+  JOB_LABEL,
+  MAP_H,
+  MAP_W,
+  Tile,
+  TILE_SIZE,
+  TRADE_MAX_PER_VISIT,
+  TRADE_RATES,
+  TradeAction,
+  TradeResource,
+} from "./types";
 
 export interface UIHandlers {
   onEndYear: () => void;
@@ -69,8 +91,126 @@ export function renderUI(state: GameState, onAllocChange: () => void): void {
   renderTileInfo(state);
   renderLog(state);
   const endBtn = document.getElementById("end-turn-btn") as HTMLButtonElement;
-  endBtn.disabled = state.gameOver;
-  endBtn.textContent = state.gameOver ? "— Settlement Failed —" : "End Year";
+  endBtn.disabled = state.gameOver || state.pendingMerchant;
+  endBtn.textContent = state.gameOver
+    ? "— Settlement Failed —"
+    : state.pendingMerchant
+      ? "Merchants waiting…"
+      : "End Year";
+}
+
+export function maybeShowTradeModal(state: GameState, onResolve: () => void): void {
+  if (!state.pendingMerchant || state.gameOver) {
+    hideTradeModal();
+    return;
+  }
+  showTradeModal(state, onResolve);
+}
+
+function hideTradeModal(): void {
+  const overlay = document.getElementById("trade-overlay")!;
+  overlay.classList.add("hidden");
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.innerHTML = "";
+}
+
+function showTradeModal(state: GameState, onResolve: () => void): void {
+  const overlay = document.getElementById("trade-overlay")!;
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+
+  let action: TradeAction = "sell";
+  let resource: TradeResource = "food";
+  let qty = 1;
+
+  const rerender = (): void => {
+    overlay.innerHTML = buildTradeHTML(state, action, resource, qty);
+    bind();
+  };
+
+  const bind = (): void => {
+    overlay.querySelectorAll<HTMLLabelElement>(".trade-opt").forEach((label) => {
+      label.addEventListener("click", () => {
+        const a = label.dataset.action as TradeAction;
+        const r = label.dataset.resource as TradeResource;
+        action = a;
+        resource = r;
+        rerender();
+      });
+    });
+    overlay.querySelector<HTMLButtonElement>(".qty-minus")!
+      .addEventListener("click", () => { if (qty > 1) { qty -= 1; rerender(); } });
+    overlay.querySelector<HTMLButtonElement>(".qty-plus")!
+      .addEventListener("click", () => { if (qty < TRADE_MAX_PER_VISIT) { qty += 1; rerender(); } });
+    overlay.querySelector<HTMLButtonElement>(".trade-confirm")!.addEventListener("click", () => {
+      if (!canExecuteTrade(state, action, resource, qty)) return;
+      state.log.unshift(executeTrade(state, action, resource, qty));
+      hideTradeModal();
+      onResolve();
+    });
+    overlay.querySelector<HTMLButtonElement>(".trade-decline")!.addEventListener("click", () => {
+      state.log.unshift(declineTrade(state));
+      hideTradeModal();
+      onResolve();
+    });
+  };
+
+  rerender();
+}
+
+function buildTradeHTML(state: GameState, action: TradeAction, resource: TradeResource, qty: number): string {
+  const rate = TRADE_RATES[action][resource];
+  const goldDelta = qty * rate;
+  const valid = canExecuteTrade(state, action, resource, qty);
+  const previewClass = valid ? "trade-preview" : "trade-preview invalid";
+  const preview = action === "sell"
+    ? `You give <strong>${qty} ${resource}</strong>, receive <strong>${goldDelta} gold</strong>.`
+    : `You spend <strong>${goldDelta} gold</strong>, receive <strong>${qty} ${resource}</strong>.`;
+  const invalidNote = !valid
+    ? action === "sell"
+      ? ` <em>(not enough ${resource})</em>`
+      : ` <em>(not enough gold)</em>`
+    : "";
+
+  const opt = (a: TradeAction, r: TradeResource): string => {
+    const selected = a === action && r === resource ? " selected" : "";
+    const verb = a === "sell" ? "Sell" : "Buy";
+    const resLabel = r.charAt(0).toUpperCase() + r.slice(1);
+    const price = TRADE_RATES[a][r];
+    return `<label class="trade-opt${selected}" data-action="${a}" data-resource="${r}">
+      <input type="radio" name="trade" ${selected ? "checked" : ""} />
+      ${verb} ${resLabel} <span style="color:#6b3f0f;font-size:0.8rem;">(${price}g)</span>
+    </label>`;
+  };
+
+  return `
+    <div id="trade-panel" role="dialog" aria-label="Merchant trade">
+      <h2>✦ Travelling Merchants ✦</h2>
+      <p class="trade-flavor">They've laid out their wares at the edge of the clearing. One trade is on offer before they move on.</p>
+      <div class="trade-onhand">
+        On hand: <strong>${state.gold}</strong> gold, <strong>${state.food}</strong> food, <strong>${state.wood}</strong> wood, <strong>${state.stone}</strong> stone
+      </div>
+      <div class="trade-options">
+        ${opt("sell", "food")}
+        ${opt("buy", "food")}
+        ${opt("sell", "wood")}
+        ${opt("buy", "wood")}
+        ${opt("sell", "stone")}
+        ${opt("buy", "stone")}
+      </div>
+      <div class="trade-qty">
+        <button class="qty-minus" ${qty <= 1 ? "disabled" : ""}>−</button>
+        <span class="qty-value">${qty}</span>
+        <button class="qty-plus" ${qty >= TRADE_MAX_PER_VISIT ? "disabled" : ""}>+</button>
+        <span style="color:#6b3f0f;font-size:0.8rem;margin-left:0.5rem;">(max ${TRADE_MAX_PER_VISIT})</span>
+      </div>
+      <div class="${previewClass}">${preview}${invalidNote}</div>
+      <div class="trade-buttons">
+        <button class="trade-confirm" ${valid ? "" : "disabled"}>Trade</button>
+        <button class="trade-decline">Decline</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderTopbar(state: GameState): void {

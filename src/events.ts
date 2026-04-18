@@ -51,12 +51,10 @@ const EVENTS: EventDef[] = [
     id: "merchants",
     weight: 9,
     apply: (s) => {
-      const cost = Math.min(3, s.food);
-      s.food -= cost;
-      s.gold += 5;
+      s.pendingMerchant = true;
       return {
         year: s.year,
-        text: `Travelling merchants pass through. They buy provisions. (-${cost} food, +5 gold)`,
+        text: "Travelling merchants lay out their wares at the edge of the clearing. They await your decision before moving on.",
         tone: "neutral",
       };
     },

@@ -14,10 +14,15 @@ import {
   GameState,
   Job,
   JOB_TERRAIN,
+  LogEntry,
   MAP_H,
   MAP_W,
   Pop,
   SCOUT_REVEAL_PER_YEAR,
+  TRADE_MAX_PER_VISIT,
+  TRADE_RATES,
+  TradeAction,
+  TradeResource,
   YIELD_PER_WORKER,
 } from "./types";
 
@@ -293,6 +298,53 @@ export function currentJobCount(state: GameState, job: Job): number {
 }
 
 export { JOB_TERRAIN };
+
+export function canExecuteTrade(
+  state: GameState,
+  action: TradeAction,
+  resource: TradeResource,
+  qty: number,
+): boolean {
+  if (qty <= 0 || qty > TRADE_MAX_PER_VISIT) return false;
+  const rate = TRADE_RATES[action][resource];
+  if (action === "sell") return state[resource] >= qty;
+  return state.gold >= qty * rate;
+}
+
+export function executeTrade(
+  state: GameState,
+  action: TradeAction,
+  resource: TradeResource,
+  qty: number,
+): LogEntry {
+  const rate = TRADE_RATES[action][resource];
+  const goldDelta = qty * rate;
+  if (action === "sell") {
+    state[resource] -= qty;
+    state.gold += goldDelta;
+  } else {
+    state.gold -= goldDelta;
+    state[resource] += qty;
+  }
+  state.pendingMerchant = false;
+  const verb = action === "sell" ? "sell" : "buy";
+  const goldSign = action === "sell" ? `+${goldDelta}` : `-${goldDelta}`;
+  const resSign = action === "sell" ? `-${qty}` : `+${qty}`;
+  return {
+    year: state.year,
+    text: `You ${verb} ${qty} ${resource} to the merchants. (${resSign} ${resource}, ${goldSign} gold)`,
+    tone: action === "sell" ? "good" : "neutral",
+  };
+}
+
+export function declineTrade(state: GameState): LogEntry {
+  state.pendingMerchant = false;
+  return {
+    year: state.year,
+    text: "You wave the merchants on. They pack their wares and continue up the coast.",
+    tone: "neutral",
+  };
+}
 
 export function canDispatchBoat(state: GameState): boolean {
   if (state.gameOver) return false;

@@ -2,7 +2,7 @@ import { render } from "./render";
 import { clearSave, loadGame, newGame, saveGame } from "./state";
 import { endYear } from "./turn";
 import { GameState } from "./types";
-import { attachCanvasClick, initUI, maybeShowIntro, renderUI } from "./ui";
+import { attachCanvasClick, initUI, maybeShowIntro, maybeShowTradeModal, renderUI } from "./ui";
 
 const canvas = document.getElementById("map") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -13,6 +13,10 @@ let state: GameState = loadGame() ?? newGame();
 function redraw(): void {
   render(ctx!, state);
   renderUI(state, redraw);
+  maybeShowTradeModal(state, () => {
+    saveGame(state);
+    redraw();
+  });
 }
 
 initUI({

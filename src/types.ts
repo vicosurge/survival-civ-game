@@ -69,6 +69,9 @@ export interface ScriptedWave {
   fired: boolean;
 }
 
+export type TradeAction = "sell" | "buy";
+export type TradeResource = "food" | "wood" | "stone";
+
 export interface GameState {
   year: number;
   pops: Pop[];         // replaces the flat population counter
@@ -81,6 +84,7 @@ export interface GameState {
   scouts: number;      // standalone — scouts don't occupy tiles
   boat: Boat;
   scriptedWaves: ScriptedWave[];
+  pendingMerchant: boolean;  // merchant visit awaiting trade/decline — blocks end-year
   log: LogEntry[];
   gameOver: boolean;
   selectedTile: { x: number; y: number } | null;
@@ -146,4 +150,13 @@ export const SCRIPTED_WAVE_JITTER = 3;
 export const SCRIPTED_WAVE_MIN_GAP = 3;
 export const SCRIPTED_WAVE_REFUGEES = 2;
 
-export const SAVE_KEY = "isle-of-elden-save-v6";
+// Merchant trade rates — asymmetric so there's a real choice. Sell = settlement
+// parts with the resource, receives gold. Buy = settlement spends gold, receives
+// the resource.
+export const TRADE_RATES: Record<TradeAction, Record<TradeResource, number>> = {
+  sell: { food: 1, wood: 1, stone: 2 },
+  buy: { food: 2, wood: 2, stone: 4 },
+};
+export const TRADE_MAX_PER_VISIT = 5;
+
+export const SAVE_KEY = "isle-of-elden-save-v7";
