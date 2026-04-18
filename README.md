@@ -6,7 +6,10 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## Status
 
-**v0.2.5 — Fertile-first allocator.** The auto-allocator now prefers fertile grass over baseline grass, even when the fertile tile is a step or two further from town. Previously distance was primary and fertility was just a tiebreaker at equal distance, which meant the town tile (distance 0) always won regardless of what rich land existed nearby.
+**v0.2.6 — Exarum survivors arrive.** Three scripted narrative waves now land roughly on years 5, 10, and 20 (±3 years of jitter), each bringing 2 refugee adults and a chronicle-length log entry that progressively reveals what has happened on the old continent — the fall of Emperor Klon, the ruin of Destum, and the rise of the draconians. The waves replace the random event roll on their fire year so the story beat isn't muddled.
+
+### In v0.2.6
+- **Three scripted Exarum waves.** Target years 5 / 10 / 20 with ±3-year jitter rolled at New Game. Each wave spawns 2 adult refugees and a lore entry; the wave replaces the random event for that year. Old saves are invalidated (SAVE_KEY bumped to `v6`).
 
 ### In v0.2.5
 - **Fertility is now the primary sort key** in `findEligibleTile`. Distance is the tiebreaker. No change to wood/stone allocation — those tiles have `fertility = 0`.

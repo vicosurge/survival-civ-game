@@ -36,7 +36,18 @@ Requires Node ≥ 18.
 - localStorage for saves (single save slot, key `isle-of-elden-save-v4` as of v0.2.2 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
-## Current mechanics (v0.2.5)
+## Current mechanics (v0.2.6)
+
+### Scripted Exarum-survivor waves (v0.2.6)
+
+Three one-shot narrative events scheduled at `newGame()` — target years `SCRIPTED_WAVE_TARGETS = [5, 10, 20]` with ±`SCRIPTED_WAVE_JITTER = 3` years of jitter, ordering enforced by `SCRIPTED_WAVE_MIN_GAP = 3`. Rolled fire-years live on `state.scriptedWaves: ScriptedWave[]`. At step 4 of the turn pipeline, if a wave's year matches `state.year` and it hasn't fired, it **replaces** the random event roll for that year, spawns `SCRIPTED_WAVE_REFUGEES = 2` adults, and writes a lore-length log entry. Narrative content is in `events.ts:SCRIPTED_WAVE_TEXT` — do not drift from the canonical names in `memory/project_cambrera_lore.md` (Exarum, Klon, Destum, Cuarecam, Duras/Vizqe/Drazna/Harab/Bludris, Bura, Captain Amezcua, draconians).
+
+**Design intent to preserve:**
+- Waves replace (not augment) the random event for that year — avoids mixing "survivors arrive + locusts" in a single chronicle turn, which would muddle the narrative beat.
+- Refugee count matches the random `newcomers` event (2 adults) so the scripted arc doesn't secretly snowball the economy.
+- Jitter (±3) means two playthroughs won't share fire-years exactly, but the arc still lands roughly at Y5/Y10/Y20.
+- `fired` flag on each wave (not a cleared array) because save/load must persist which ones have played. Old saves without `scriptedWaves` won't load — SAVE_KEY bumped to `v6`.
+- Extension path: adding a 4th scripted event means adding a `ScriptedWaveId`, appending to `SCRIPTED_WAVE_TARGETS`, and writing the text — no turn.ts or state.ts churn.
 
 ### Allocator sort order (v0.2.5)
 

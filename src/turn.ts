@@ -1,4 +1,4 @@
-import { rollEvent } from "./events";
+import { fireScriptedWave, rollEvent } from "./events";
 import { currentWorkers, exploreFrontier, findWorkerToRemove } from "./map";
 import { adultCount, childCount, makeBabyPop, makeNewcomerPop, totalPop } from "./state";
 import {
@@ -165,9 +165,17 @@ export function endYear(state: GameState): void {
     }
   }
 
-  // 4. Random event (before consumption — see note in README; events may change food/pops).
+  // 4. Event roll — scripted wave fires instead of random event on its target year.
+  //    Before consumption so refugees are counted in this turn's food (same
+  //    convention as rescue-ship returns and the `newcomers` random event).
   if (totalPop(state) > 0) {
-    state.log.unshift(rollEvent(state));
+    const pending = state.scriptedWaves.find((w) => !w.fired && w.year === year);
+    if (pending) {
+      state.log.unshift(fireScriptedWave(state, pending.id));
+      pending.fired = true;
+    } else {
+      state.log.unshift(rollEvent(state));
+    }
   }
 
   // 5. Food consumption. Adults eat twice what children do.

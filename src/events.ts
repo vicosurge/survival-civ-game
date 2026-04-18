@@ -1,6 +1,6 @@
 import { exploreFrontier } from "./map";
 import { makeNewcomerPop } from "./state";
-import { GameState, LogEntry } from "./types";
+import { GameState, LogEntry, SCRIPTED_WAVE_REFUGEES, ScriptedWaveId } from "./types";
 
 interface EventDef {
   id: string;
@@ -144,6 +144,37 @@ const EVENTS: EventDef[] = [
     }),
   },
 ];
+
+// Lore-heavy one-shot events fired at scripted years (see SCRIPTED_WAVE_TARGETS).
+// Each brings SCRIPTED_WAVE_REFUGEES adult refugees plus a chronicle-length log
+// entry revealing another chapter of Exarum's fall.
+const SCRIPTED_WAVE_TEXT: Record<ScriptedWaveId, string> = {
+  wave1:
+    "Battered travellers beach on Cambrera's shore. They speak of Exarum — " +
+    "the south of the continent ravaged, the draconian host marching without " +
+    "pause. Emperor Klon himself leads the defence of Destum, the capital, " +
+    "now under siege. None, they say, have found a way to stop the advance. " +
+    "(+2 adults)",
+  wave2:
+    "More survivors reach the isle, carrying darker news. Emperor Klon is " +
+    "dead. The Empire has nearly crumbled beneath the draconian advance. " +
+    "Villages burn; a handful still stand. Destum, the old capital of the " +
+    "South, now lies in complete ruins — and Cuarecam has been claimed as " +
+    "the new draconian capital. (+2 adults)",
+  wave3:
+    "A gaunt band stumbles ashore with the dirge of Exarum on their lips. " +
+    "The Empire has fallen — Duras, Vizqe, Drazna, Harab, and Bludris all " +
+    "under the draconian banner. Only Bura holds, far to the north, where " +
+    "Captain Amezcua rallies what remains of Klon's army beneath the old " +
+    "imperial colours. How long the city stands, none can say. Worse still: " +
+    "some among the newcomers whisper that the draconians may know of " +
+    "Cambrera now — that we may be next. (+2 adults)",
+};
+
+export function fireScriptedWave(state: GameState, id: ScriptedWaveId): LogEntry {
+  for (let i = 0; i < SCRIPTED_WAVE_REFUGEES; i++) state.pops.push(makeNewcomerPop());
+  return { year: state.year, text: SCRIPTED_WAVE_TEXT[id], tone: "neutral" };
+}
 
 export function rollEvent(state: GameState): LogEntry {
   const totalWeight = EVENTS.reduce((sum, e) => sum + e.weight, 0);

@@ -58,6 +58,17 @@ export interface Boat {
   crew: Pop[];                // 2 adults if on voyage; empty when docked
 }
 
+export type ScriptedWaveId = "wave1" | "wave2" | "wave3";
+
+// A one-shot narrative event scheduled at newGame() and fired on the year
+// rolled. Adds refugees + a lore log entry. Replaces the random-event roll
+// for the year it fires.
+export interface ScriptedWave {
+  id: ScriptedWaveId;
+  year: number;
+  fired: boolean;
+}
+
 export interface GameState {
   year: number;
   pops: Pop[];         // replaces the flat population counter
@@ -69,6 +80,7 @@ export interface GameState {
   town: { x: number; y: number };
   scouts: number;      // standalone — scouts don't occupy tiles
   boat: Boat;
+  scriptedWaves: ScriptedWave[];
   log: LogEntry[];
   gameOver: boolean;
   selectedTile: { x: number; y: number } | null;
@@ -126,4 +138,12 @@ export const CULTIVATION_YEARS = 1;
 // Fraction of grass tiles that roll fertile (+1 food per farmer per year).
 export const FERTILE_GRASS_CHANCE = 0.3;
 
-export const SAVE_KEY = "isle-of-elden-save-v5";
+// Scripted Exarum-survivor waves — target years and jitter (±). Rolled at
+// newGame() so each playthrough varies while keeping the narrative arc intact.
+export const SCRIPTED_WAVE_TARGETS: [number, number, number] = [5, 10, 20];
+export const SCRIPTED_WAVE_JITTER = 3;
+// Minimum years between consecutive waves (after jitter).
+export const SCRIPTED_WAVE_MIN_GAP = 3;
+export const SCRIPTED_WAVE_REFUGEES = 2;
+
+export const SAVE_KEY = "isle-of-elden-save-v6";

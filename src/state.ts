@@ -9,6 +9,11 @@ import {
   NEWCOMER_AGE_RANGE,
   Pop,
   SAVE_KEY,
+  SCRIPTED_WAVE_JITTER,
+  SCRIPTED_WAVE_MIN_GAP,
+  SCRIPTED_WAVE_TARGETS,
+  ScriptedWave,
+  ScriptedWaveId,
   STARTER_AGE_RANGE,
   YIELD_PER_WORKER,
 } from "./types";
@@ -40,6 +45,21 @@ export function makeNewcomerPop(): Pop {
   return { age, lifespan };
 }
 
+export function rollScriptedWaves(): ScriptedWave[] {
+  const ids: ScriptedWaveId[] = ["wave1", "wave2", "wave3"];
+  const waves: ScriptedWave[] = [];
+  let previous = 0;
+  for (let i = 0; i < 3; i++) {
+    const target = SCRIPTED_WAVE_TARGETS[i];
+    const lo = Math.max(target - SCRIPTED_WAVE_JITTER, previous + SCRIPTED_WAVE_MIN_GAP);
+    const hi = target + SCRIPTED_WAVE_JITTER;
+    const year = randInt(lo, Math.max(lo, hi));
+    waves.push({ id: ids[i], year, fired: false });
+    previous = year;
+  }
+  return waves;
+}
+
 export function newGame(): GameState {
   const { tiles, town } = buildIsland();
   const starterPops: Pop[] = [
@@ -58,6 +78,7 @@ export function newGame(): GameState {
     town,
     scouts: 1,
     boat: { status: "docked", returnYear: null, crew: [] },
+    scriptedWaves: rollScriptedWaves(),
     log: [
       {
         year: 1,
