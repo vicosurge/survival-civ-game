@@ -93,6 +93,8 @@ html, body {
   gap: 1rem;
   min-width: 280px;
   max-width: 420px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 #sidebar section {
@@ -143,63 +145,48 @@ html, body {
 #buildings-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 }
 
 .building-row {
-  padding: 0.4rem 0.5rem;
-  background: rgba(74, 58, 40, 0.35);
-  border-left: 2px solid var(--panel-edge);
-  font-size: 0.85rem;
-}
-.building-row.built {
-  border-left-color: var(--good);
-  background: rgba(122, 181, 88, 0.08);
-}
-
-.building-head {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   gap: 0.5rem;
+  align-items: center;
+  padding: 0.25rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px dashed var(--panel-edge);
 }
-.building-head .building-name {
-  flex: 1;
+.building-row:last-child { border-bottom: none; }
+.building-row.built { grid-template-columns: 1fr; }
+
+.building-row .building-name {
   color: var(--ink);
   font-weight: bold;
 }
-.building-row.built .building-name { color: var(--good); }
+.building-row.built .building-name { color: var(--good); font-weight: normal; }
 
-.building-head button {
+.building-row button {
   background: var(--gold);
   color: #1a1410;
   border: none;
-  padding: 0.2rem 0.75rem;
+  padding: 0.15rem 0.6rem;
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: bold;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
-.building-head button:hover:not(:disabled) { background: #e8c060; }
-.building-head button:disabled { opacity: 0.35; cursor: not-allowed; }
-
-.building-desc {
-  color: var(--muted);
-  font-size: 0.8rem;
-  margin-top: 0.25rem;
-  font-style: italic;
-}
+.building-row button:hover:not(:disabled) { background: #e8c060; }
+.building-row button:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .building-cost {
-  display: flex;
-  gap: 0.4rem;
-  margin-top: 0.3rem;
-  flex-wrap: wrap;
+  display: inline-flex;
+  gap: 0.3rem;
 }
 .cost-chip {
   font-size: 0.75rem;
-  padding: 0.1rem 0.4rem;
-  background: rgba(26, 20, 16, 0.5);
+  padding: 0.05rem 0.3rem;
+  background: rgba(26, 20, 16, 0.4);
   border: 1px solid var(--panel-edge);
 }
 .cost-chip.ok { color: var(--good); }

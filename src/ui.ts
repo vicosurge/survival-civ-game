@@ -335,24 +335,26 @@ function renderBuildingsPanel(state: GameState, onChange: () => void): void {
 function buildingRow(state: GameState, def: BuildingDef, onChange: () => void): HTMLElement {
   const row = document.createElement("div");
   row.className = "building-row";
+  row.title = def.description;
   const built = state.buildings[def.id];
 
   if (built) {
     row.classList.add("built");
-    row.innerHTML = `
-      <div class="building-head">
-        <span class="building-name">✓ ${def.name}</span>
-      </div>
-      <div class="building-desc">${def.description}</div>
-    `;
+    const name = document.createElement("span");
+    name.className = "building-name";
+    name.textContent = `✓ ${def.name}`;
+    row.append(name);
     return row;
   }
 
-  const head = document.createElement("div");
-  head.className = "building-head";
   const name = document.createElement("span");
   name.className = "building-name";
   name.textContent = def.name;
+
+  const cost = document.createElement("span");
+  cost.className = "building-cost";
+  cost.append(...costChips(state, def));
+
   const btn = document.createElement("button");
   btn.textContent = "Build";
   btn.disabled = !canBuild(state, def.id);
@@ -360,27 +362,18 @@ function buildingRow(state: GameState, def: BuildingDef, onChange: () => void): 
     build(state, def.id);
     onChange();
   });
-  head.append(name, btn);
 
-  const desc = document.createElement("div");
-  desc.className = "building-desc";
-  desc.textContent = def.description;
-
-  const costLine = document.createElement("div");
-  costLine.className = "building-cost";
-  costLine.append(...costChips(state, def));
-
-  row.append(head, desc, costLine);
+  row.append(name, cost, btn);
   return row;
 }
 
 function costChips(state: GameState, def: BuildingDef): HTMLElement[] {
   const chips: HTMLElement[] = [];
   const entries: Array<["food" | "wood" | "stone" | "gold", string]> = [
-    ["food", "Food"],
-    ["wood", "Wood"],
-    ["stone", "Stone"],
-    ["gold", "Gold"],
+    ["food", "f"],
+    ["wood", "w"],
+    ["stone", "s"],
+    ["gold", "g"],
   ];
   for (const [key, label] of entries) {
     const amount = def.cost[key];
@@ -388,7 +381,7 @@ function costChips(state: GameState, def: BuildingDef): HTMLElement[] {
     const have = state[key];
     const chip = document.createElement("span");
     chip.className = `cost-chip ${have >= amount ? "ok" : "short"}`;
-    chip.textContent = `${amount} ${label}`;
+    chip.textContent = `${amount}${label}`;
     chips.push(chip);
   }
   return chips;
