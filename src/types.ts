@@ -105,7 +105,7 @@ export const MAP_H = 15;
 export const TILE_SIZE = 32;
 
 export const ADULT_AGE = 4;
-export const LIFESPAN_RANGE: [number, number] = [8, 12];
+export const LIFESPAN_RANGE: [number, number] = [10, 15];
 // Starter pops are a spread of adult ages so they don't all die in the same year.
 export const STARTER_AGE_RANGE: [number, number] = [4, 7];
 // Newcomer events arrive as fresh adults partway through life.

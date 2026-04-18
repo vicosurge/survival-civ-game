@@ -36,6 +36,23 @@ Requires Node ≥ 18.
 - localStorage for saves (single save slot, key `isle-of-elden-save-v8` as of v0.2.8 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
+## Current mechanics (v0.2.9)
+
+### Balance tuning (v0.2.9)
+
+Early-game harshness reduced without touching the core farming break-even model.
+
+| Constant | Before | After | File |
+|---|---|---|---|
+| Starting food | 20 | 30 | `state.ts:newGame()` |
+| Starting wood | 10 | 18 | `state.ts:newGame()` |
+| Starting stone | 0 | 5 | `state.ts:newGame()` |
+| `LIFESPAN_RANGE` | [8, 12] | [10, 15] | `types.ts` |
+| Locusts damage | -8 food | -6 food | `events.ts` |
+| Forest fire damage | -8 wood | -6 wood | `events.ts` |
+
+**What was not changed:** farmer yield (2), `FOOD_PER_ADULT` (2), growth threshold (pop × 3). The farming break-even design — one farmer sustains one adult on baseline grass, surplus requires fertile tiles — is preserved. No SAVE_KEY bump needed (state shape unchanged).
+
 ## Current mechanics (v0.2.8)
 
 ### Buildings (v0.2.8)

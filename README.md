@@ -6,7 +6,14 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## Status
 
-**v0.2.8 — Buildings.** Three one-time settlement upgrades give negative events a counter: a **granary** blocks locusts, a **palisade** blocks bandits, a **well** blocks wildfires. Buying them drains food/wood/stone, giving your surplus somewhere to go and a reason to keep woodcutters and quarrymen in rotation.
+**v0.2.9 — Balance tuning.** Early game is less punishing: starting food/wood/stone bumped, pops live longer (lifespan [10–15] up from [8–12]), and locust/wildfire events deal -6 instead of -8. The farming break-even model (1 farmer = 1 adult fed) is unchanged.
+
+### In v0.2.9
+- Starting resources: food 20→30, wood 10→18, stone 0→5
+- `LIFESPAN_RANGE` [8, 12] → [10, 15] — more productive years per pop, less constant turnover
+- Locusts and wildfire events: -8 → -6 (still painful, no longer immediately ruinous early game)
+
+### In v0.2.8 — Buildings. Three one-time settlement upgrades give negative events a counter: a **granary** blocks locusts, a **palisade** blocks bandits, a **well** blocks wildfires. Buying them drains food/wood/stone, giving your surplus somewhere to go and a reason to keep woodcutters and quarrymen in rotation.
 
 ### In v0.2.8
 - **Buildings sidebar.** New section under Villagers listing each upgrade with its cost and a Build button. Built ones show checked, with a green border.

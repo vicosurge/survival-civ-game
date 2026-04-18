@@ -70,9 +70,9 @@ export function newGame(): GameState {
   const state: GameState = {
     year: 1,
     pops: starterPops,
-    food: 20,
-    wood: 10,
-    stone: 0,
+    food: 30,
+    wood: 18,
+    stone: 5,
     gold: 5,
     tiles,
     town,
