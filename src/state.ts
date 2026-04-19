@@ -19,6 +19,7 @@ import {
   ScriptedWaveId,
   STARTER_AGE_RANGE,
   YIELD_PER_WORKER,
+  GRANARY_FARMER_BONUS,
 } from "./types";
 
 function randInt(lo: number, hi: number): number {
@@ -105,10 +106,11 @@ export function newGame(): GameState {
   return state;
 }
 
-function placeStarterWorker(state: GameState, job: "farmer" | "woodcutter" | "quarryman"): void {
+function placeStarterWorker(state: GameState, job: Exclude<import("./types").Job, "scout">): void {
   const slot = findEligibleTile(state, job);
   if (!slot) return;
   const tile = state.tiles[slot.y][slot.x];
+  if (tile.workers === 0) tile.job = job;
   tile.workers += 1;
   tile.state = "worked";
   tile.yearsInState = 0;
@@ -159,6 +161,7 @@ export function assignedTotal(state: GameState): number {
     currentWorkers(state, "farmer") +
     currentWorkers(state, "woodcutter") +
     currentWorkers(state, "quarryman") +
+    currentWorkers(state, "hunter") +
     state.scouts
   );
 }
@@ -189,8 +192,11 @@ export function projectedYields(state: GameState): {
       const t = state.tiles[y][x];
       if (t.state !== "worked" && t.state !== "cultivating") continue;
       if (t.workers <= 0) continue;
-      if (t.terrain === "grass") foodProd += t.workers * (YIELD_PER_WORKER.farmer + t.fertility);
-      else if (t.terrain === "forest") woodProd += t.workers * YIELD_PER_WORKER.woodcutter;
+      if (t.terrain === "grass") foodProd += t.workers * (YIELD_PER_WORKER.farmer + t.fertility + (state.buildings.granary ? GRANARY_FARMER_BONUS : 0));
+      else if (t.terrain === "forest") {
+        if (t.job === "hunter") foodProd += t.workers * YIELD_PER_WORKER.hunter;
+        else woodProd += t.workers * YIELD_PER_WORKER.woodcutter;
+      }
       else if (t.terrain === "stone") stoneProd += t.workers * YIELD_PER_WORKER.quarryman;
     }
   }

@@ -35,7 +35,7 @@ export interface UIHandlers {
   onNewGame: () => void;
 }
 
-const SKIP_INTRO_KEY = "isle-of-elden-skip-intro";
+const SKIP_INTRO_KEY = "isle-of-cambrera-skip-intro";
 
 export function initUI(handlers: UIHandlers): void {
   document.getElementById("end-turn-btn")!.addEventListener("click", handlers.onEndYear);
@@ -320,14 +320,17 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
   }
   plus.disabled = state.gameOver || !(canAddScout || canAddProd);
   if (job !== "scout" && idleCount(state) > 0 && !canAddProd) {
-    plus.title = `No ${job === "farmer" ? "grassland" : job === "woodcutter" ? "forest" : "stone"} in reach — send scouts`;
+    const terrainLabel: Record<Exclude<Job, "scout">, string> = {
+      farmer: "grassland", woodcutter: "forest", hunter: "forest", quarryman: "stone",
+    };
+    plus.title = `No ${terrainLabel[job]} in reach — send scouts`;
   }
   plus.addEventListener("click", () => {
     if (job === "scout") {
       if (idleCount(state) > 0) state.scouts += 1;
     } else {
       const slot = findEligibleTile(state, job);
-      if (slot) assignWorker(state, slot.x, slot.y);
+      if (slot) assignWorker(state, slot.x, slot.y, job);
     }
     onChange();
   });

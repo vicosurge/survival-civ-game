@@ -27,6 +27,7 @@ import {
   TradeAction,
   TradeResource,
   YIELD_PER_WORKER,
+  GRANARY_FARMER_BONUS,
 } from "./types";
 
 export function endYear(state: GameState): void {
@@ -101,17 +102,29 @@ export function endYear(state: GameState): void {
       const t = state.tiles[y][x];
       if (t.state !== "worked" || t.workers <= 0) continue;
       if (t.terrain === "grass") {
-        foodGain += t.workers * (YIELD_PER_WORKER.farmer + t.fertility);
+        const granaryBonus = state.buildings.granary ? GRANARY_FARMER_BONUS : 0;
+        foodGain += t.workers * (YIELD_PER_WORKER.farmer + t.fertility + granaryBonus);
       } else if (t.terrain === "forest") {
-        const desired = t.workers * YIELD_PER_WORKER.woodcutter;
-        const actual = Math.min(desired, t.reserve);
-        woodGain += actual;
-        t.reserve -= actual;
+        if (t.job === "hunter") {
+          // Hunters drain the same forest reserve as woodcutters — game runs out
+          // just like timber. Food yield is capped by remaining reserve.
+          const desired = t.workers * YIELD_PER_WORKER.hunter;
+          const actual = Math.min(desired, t.reserve);
+          foodGain += actual;
+          t.reserve -= actual;
+        } else {
+          const desired = t.workers * YIELD_PER_WORKER.woodcutter;
+          const actual = Math.min(desired, t.reserve);
+          woodGain += actual;
+          t.reserve -= actual;
+        }
         if (t.reserve <= 0) {
+          const wasHunting = t.job === "hunter";
           t.state = "exhausted";
           t.workers = 0;
+          t.job = null;
           t.yearsInState = 0;
-          exhaustionNotes.push(`a timber stand near (${x},${y})`);
+          exhaustionNotes.push(wasHunting ? `hunting grounds near (${x},${y})` : `a timber stand near (${x},${y})`);
         }
       } else if (t.terrain === "stone") {
         const desired = t.workers * YIELD_PER_WORKER.quarryman;
@@ -127,6 +140,7 @@ export function endYear(state: GameState): void {
       }
     }
   }
+  foodGain = Math.floor(foodGain);
   state.food += foodGain;
   state.wood += woodGain;
   state.stone += stoneGain;
@@ -264,7 +278,7 @@ export function endYear(state: GameState): void {
 // then quarryman/woodcutter/farmer from furthest-from-town tiles.
 function reconcileAllocation(state: GameState): void {
   const adults = adultCount(state);
-  let totalAssigned = state.scouts + currentWorkers(state, "farmer") + currentWorkers(state, "woodcutter") + currentWorkers(state, "quarryman");
+  let totalAssigned = state.scouts + currentWorkers(state, "farmer") + currentWorkers(state, "woodcutter") + currentWorkers(state, "quarryman") + currentWorkers(state, "hunter");
   let over = totalAssigned - adults;
   if (over <= 0) return;
 
@@ -272,7 +286,9 @@ function reconcileAllocation(state: GameState): void {
   state.scouts -= scoutShed;
   over -= scoutShed;
 
-  const prodJobs: Array<Exclude<Job, "scout">> = ["quarryman", "woodcutter", "farmer"];
+  // Shed order: scouts first (done above), then quarrymen, woodcutters, hunters,
+  // farmers last — food producers are the last to lose workers in a crisis.
+  const prodJobs: Array<Exclude<Job, "scout">> = ["quarryman", "woodcutter", "hunter", "farmer"];
   for (const job of prodJobs) {
     while (over > 0) {
       const slot = findWorkerToRemove(state, job);
@@ -284,9 +300,10 @@ function reconcileAllocation(state: GameState): void {
 }
 
 // Exported for UI button handlers.
-export function assignWorker(state: GameState, x: number, y: number): void {
+export function assignWorker(state: GameState, x: number, y: number, job: Exclude<Job, "scout">): void {
   const t = state.tiles[y][x];
   if (t.workers >= t.capacity) return;
+  if (t.workers === 0) t.job = job; // lock in camp mode on first worker
   t.workers += 1;
   if (t.state === "wild") {
     t.state = "cultivating";
@@ -301,9 +318,12 @@ export function unassignWorker(state: GameState, x: number, y: number): void {
   const t = state.tiles[y][x];
   if (t.workers <= 0) return;
   t.workers -= 1;
-  if (t.workers === 0 && t.state === "cultivating") {
-    t.state = "wild";
-    t.yearsInState = 0;
+  if (t.workers === 0) {
+    t.job = null; // release camp mode so the tile can be re-opened as either type
+    if (t.state === "cultivating") {
+      t.state = "wild";
+      t.yearsInState = 0;
+    }
   }
 }
 

@@ -1,13 +1,14 @@
 export type Terrain = "water" | "beach" | "grass" | "forest" | "stone" | "mountain";
 
-export type Job = "farmer" | "woodcutter" | "quarryman" | "scout";
+export type Job = "farmer" | "woodcutter" | "quarryman" | "hunter" | "scout";
 
-export const JOBS: Job[] = ["farmer", "woodcutter", "quarryman", "scout"];
+export const JOBS: Job[] = ["farmer", "woodcutter", "quarryman", "hunter", "scout"];
 
 export const JOB_LABEL: Record<Job, string> = {
   farmer: "Farmer",
   woodcutter: "Woodcutter",
   quarryman: "Quarryman",
+  hunter: "Hunter",
   scout: "Scout",
 };
 
@@ -19,10 +20,12 @@ export const JOB_LABEL: Record<Job, string> = {
 export type TileState = "wild" | "cultivating" | "worked" | "fallow" | "exhausted";
 
 // Maps production jobs to the terrain they work. Scouts don't occupy tiles.
+// Both woodcutter and hunter work forest; tile.job disambiguates which is active.
 export const JOB_TERRAIN: Record<Exclude<Job, "scout">, Terrain> = {
   farmer: "grass",
   woodcutter: "forest",
   quarryman: "stone",
+  hunter: "forest",
 };
 
 export interface Tile {
@@ -31,9 +34,12 @@ export interface Tile {
   state: TileState;
   capacity: number;    // max workers this tile can hold; 0 for non-workable terrain
   workers: number;     // currently assigned workers (0..capacity)
-  reserve: number;     // remaining resource units (forest wood / quarry stone); 0 for grass
+  reserve: number;     // remaining resource units (forest wood/game / quarry stone); 0 for grass
   fertility: number;   // grass tiles only: +0 normal, +1 fertile — adds to per-worker farmer yield
   yearsInState: number; // how long in current state — drives cultivating→worked and fallow→wild
+  // Forest tiles only: "woodcutter" = logging camp, "hunter" = hunting camp, null = unassigned.
+  // Cleared when workers drops to 0 so a fallow/re-opened tile can switch modes.
+  job: Exclude<Job, "scout"> | null;
 }
 
 export interface LogEntry {
@@ -121,7 +127,15 @@ export const YIELD_PER_WORKER: Record<Exclude<Job, "scout">, number> = {
   farmer: 2,
   woodcutter: 2,
   quarryman: 1,
+  // 3 food/year: hunters eat 2 (like any adult), net +1 surplus. Same as a
+  // farmer on fertile grass, but finite — the forest reserve is shared with
+  // woodcutters and depletes the same way.
+  hunter: 3,
 };
+
+// Extra food per farmer when a granary is built. 0.5 means an odd farmer count
+// rounds down via Math.floor at collection time.
+export const GRANARY_FARMER_BONUS = 0.5;
 
 export const SCOUT_REVEAL_PER_YEAR = 2;
 
@@ -186,7 +200,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   granary: {
     id: "granary",
     name: "Granary",
-    description: "A sealed storehouse. Blocks locusts.",
+    description: "A sealed storehouse. Each farmer yields +0.5 food/year. Blocks locusts.",
     cost: { food: 30, wood: 15 },
   },
   palisade: {
@@ -203,4 +217,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-elden-save-v9";
+export const SAVE_KEY = "isle-of-cambrera-save-v11";

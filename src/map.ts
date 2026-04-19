@@ -71,6 +71,7 @@ function makeTile(terrain: Terrain): Tile {
     reserve,
     fertility,
     yearsInState: 0,
+    job: null,
   };
 }
 
@@ -96,6 +97,7 @@ export function buildIsland(): { tiles: Tile[][]; town: { x: number; y: number }
     tiles.push(tileRow);
   }
   ensureFertileNearTown(tiles, town);
+  ensureForestNearTown(tiles, town);
   revealAround(tiles, town.x, town.y, 2);
   return { tiles, town };
 }
@@ -119,6 +121,28 @@ function ensureFertileNearTown(tiles: Tile[][], town: { x: number; y: number }):
   if (hasFertile || grassCandidates.length === 0) return;
   grassCandidates.sort((a, b) => a.dist - b.dist);
   tiles[grassCandidates[0].y][grassCandidates[0].x].fertility = 1;
+}
+
+// Settlers chose a site with hunting grounds nearby — at least one forest tile
+// must be visible from the start (within initial reveal radius). If none is,
+// promote the nearest in-reach forest tile to discovered.
+function ensureForestNearTown(tiles: Tile[][], town: { x: number; y: number }): void {
+  const REVEAL_RADIUS = 2;
+  let hasVisibleForest = false;
+  const forestCandidates: Array<{ x: number; y: number; dist: number }> = [];
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const t = tiles[y][x];
+      if (t.terrain !== "forest") continue;
+      const dist = cheby(x, y, town.x, town.y);
+      if (dist <= REVEAL_RADIUS) hasVisibleForest = true;
+      if (dist <= BASE_REACH) forestCandidates.push({ x, y, dist });
+    }
+  }
+  if (hasVisibleForest || forestCandidates.length === 0) return;
+  forestCandidates.sort((a, b) => a.dist - b.dist);
+  const { x, y } = forestCandidates[0];
+  tiles[y][x].discovered = true;
 }
 
 export function revealAround(tiles: Tile[][], cx: number, cy: number, radius: number): number {
@@ -197,6 +221,8 @@ export function reachableTiles(state: GameState): Array<{ x: number; y: number; 
 function tileAcceptsWorker(tile: Tile, job: Exclude<Job, "scout">): boolean {
   if (tile.terrain !== JOB_TERRAIN[job]) return false;
   if (tile.state === "exhausted") return false;
+  // Forest tiles are either a logging camp or a hunting camp — not both.
+  if (tile.terrain === "forest" && tile.job !== null && tile.job !== job) return false;
   return tile.workers < tile.capacity;
 }
 
@@ -233,13 +259,18 @@ export function totalReachableCapacity(state: GameState, job: Exclude<Job, "scou
   return total;
 }
 
-// Sum of workers across all tiles of a given job's terrain.
+// Sum of workers for a given job. For forest jobs (hunter/woodcutter) we
+// filter by tile.job so the two modes don't bleed into each other's counts.
 export function currentWorkers(state: GameState, job: Exclude<Job, "scout">): number {
+  const terrain = JOB_TERRAIN[job];
+  const needsJobFilter = terrain === "forest";
   let n = 0;
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const t = state.tiles[y][x];
-      if (t.terrain === JOB_TERRAIN[job]) n += t.workers;
+      if (t.terrain !== terrain) continue;
+      if (needsJobFilter && t.job !== job) continue;
+      n += t.workers;
     }
   }
   return n;
@@ -251,11 +282,14 @@ export function findWorkerToRemove(
   state: GameState,
   job: Exclude<Job, "scout">,
 ): { x: number; y: number } | null {
+  const terrain = JOB_TERRAIN[job];
+  const needsJobFilter = terrain === "forest";
   let best: { x: number; y: number; dist: number } | null = null;
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const t = state.tiles[y][x];
-      if (t.terrain !== JOB_TERRAIN[job]) continue;
+      if (t.terrain !== terrain) continue;
+      if (needsJobFilter && t.job !== job) continue;
       if (t.workers <= 0) continue;
       const dist = cheby(x, y, state.town.x, state.town.y);
       if (best === null || dist > best.dist) best = { x, y, dist };

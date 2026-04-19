@@ -4,7 +4,7 @@ Context for future Claude sessions working on this project. Read this first.
 
 ## What this is
 
-**Isle of Elden** — a single-player, turn-based, browser-based 2D civ-builder. The player founds a settlement on **Cambrera**, a small northern island chosen by refugees fleeing a continent-destroying war. Grows toward a kingdom over time. Inspired by *Hamurabi* (1968), *Civilization*, *Lords of the Realm II*, and *Master of Orion* (poor tiles should still matter).
+**Isle of Cambrera** — a single-player, turn-based, browser-based 2D civ-builder. The player founds a settlement on **Cambrera**, a small northern island chosen by refugees fleeing a continent-destroying war. Grows toward a kingdom over time. Inspired by *Hamurabi* (1968), *Civilization*, *Lords of the Realm II*, and *Master of Orion* (poor tiles should still matter).
 
 > Full Cambrera lore lives in `memory/project_cambrera_lore.md` — read it before adding events, flavor text, or hostile encounters so they stay thematically aligned.
 
@@ -33,8 +33,24 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage for saves (single save slot, key `isle-of-elden-save-v9` as of v0.3.0 — bump on breaking state-shape changes)
+- localStorage for saves (single save slot, key `isle-of-cambrera-save-v11` as of v0.3.1 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
+
+## Current mechanics (v0.3.1)
+
+### Hunters (v0.3.1)
+
+A fourth production job alongside farmer/woodcutter/quarryman. Hunters work forest tiles and produce **3 food/year** (net +1 surplus after eating), draining the same hidden reserve as woodcutters. This creates the early-game arc: hunt to survive → forests thin → transition to farming.
+
+**Key invariant:** a forest tile is locked to one mode (`tile.job`: `"woodcutter"` or `"hunter"`) the moment its first worker arrives. The mode clears when workers drops to 0, so a re-opened tile can change jobs. Hunters and woodcutters cannot share the same tile.
+
+**Guaranteed forest at start.** `ensureForestNearTown` (map.ts) ensures at least one forest tile is discovered on turn 1 — settlers picked a site with game to hunt.
+
+**Balance:** 3 food vs 2 yield for farmers is intentional. Hunters beat break-even from turn 1 (no cultivation wait, no wood cost), but they're spending a depletable resource doing it. Once a forest is hunted out it's gone — farming on fertile grass matches the hunter's net yield sustainably.
+
+**Shed order in crisis:** quarryman → woodcutter → hunter → farmer. Hunters produce food so they're protected longer than woodcutters in famine-driven reconcile.
+
+**SAVE_KEY bumped to `v10`** because `tile.job` is a new required field; v9 saves won't load.
 
 ## Current mechanics (v0.3.0)
 
@@ -86,11 +102,11 @@ Early-game harshness reduced without touching the core farming break-even model.
 One-time-purchase settlement upgrades declared in `types.ts:BUILDINGS`. Each has a resource cost and (via the events table) blocks a specific negative event. `state.buildings: Record<BuildingId, boolean>` tracks what's built. UI lives in a dedicated sidebar section below Villagers (`#buildings-section`); clicking Build calls `build()` in `turn.ts` which subtracts resources and flips the flag.
 
 **The three starter buildings:**
-| Building | Cost | Blocks |
-|---|---|---|
-| Granary | 30 food, 15 wood | locusts |
-| Palisade | 20 wood, 25 stone | bandits |
-| Well | 10 wood, 15 stone | forest_fire |
+| Building | Cost | Bonus | Blocks |
+|---|---|---|---|
+| Granary | 30 food, 15 wood | +0.5 food/farmer/year (floored at harvest) | locusts |
+| Palisade | 20 wood, 25 stone | — | bandits |
+| Well | 10 wood, 15 stone | — | forest_fire |
 
 **Blocker mechanism:** events carry optional `blockedBy: BuildingId` + `blockedText: string`. `rollEvent` picks normally, then if the chosen event is blocked, returns the `blockedText` as a "good" tone log and skips the `apply`. The blocked roll still consumes the year's event slot — the "averted" chronicle line *is* the event — which is narratively satisfying (the player sees their investment pay off) and keeps the turn pipeline unchanged.
 
@@ -132,7 +148,7 @@ Three one-shot narrative events scheduled at `newGame()` — target years `SCRIP
 
 ### Intro papyrus (v0.2.4)
 
-`#intro-overlay` in `index.html` is a parchment-style overlay with the Cambrera backstory. Hidden by default via the `hidden` class. `maybeShowIntro()` in `ui.ts` un-hides it on first load and after New Game, unless `localStorage["isle-of-elden-skip-intro"] === "1"`. The "Skip this on future games" checkbox inside the overlay sets/clears that key. No game-state impact; CSS-only styling, no assets.
+`#intro-overlay` in `index.html` is a parchment-style overlay with the Cambrera backstory. Hidden by default via the `hidden` class. `maybeShowIntro()` in `ui.ts` un-hides it on first load and after New Game, unless `localStorage["isle-of-cambrera-skip-intro"] === "1"`. The "Skip this on future games" checkbox inside the overlay sets/clears that key. No game-state impact; CSS-only styling, no assets.
 
 ### Pops
 
@@ -183,7 +199,12 @@ fallow ──assign worker──▶ worked   (re-opened; infrastructure survives
 Per-worker, only in `worked` state:
 - Farmer (grass): `YIELD_PER_WORKER.farmer + tile.fertility` food/year. Base 2; fertile grass tiles add +1.
 - Woodcutter (forest): 2 wood/year, drains tile `reserve`
+- Hunter (forest): 3 food/year, drains the **same** tile `reserve` as woodcutters. Net +1 food surplus (hunter eats 2). Finite — the forest is hunted out the same way it's logged out.
 - Quarryman (stone): 1 stone/year, drains tile `reserve`
+
+**Forest tile mode.** `tile.job` records whether a forest tile is a logging camp (`"woodcutter"`) or hunting camp (`"hunter"`). The first worker to arrive locks in the mode; it clears to `null` when workers drops to 0 (so a fallow/reopened tile can switch). A single forest tile cannot host both hunters and woodcutters simultaneously.
+
+**Hunting arc.** Early game: hunters provide food without the cultivation wait. Mid game: forests thin; the player must transition to farming. Starter reveal guarantees at least one forest tile is visible from turn 1 (`ensureForestNearTown` in `map.ts`).
 
 Forest and stone tiles have a **hidden** `reserve` (forest 30–120, stone 60–240). When reserve hits 0, tile becomes `exhausted` and workers are evicted.
 
