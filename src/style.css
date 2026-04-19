@@ -83,22 +83,25 @@ html, body {
   min-height: 0;
 }
 
-#map {
+#map-container {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
   background: #0d1418;
   border: 2px solid var(--panel-edge);
+}
+
+#map {
+  display: block;
   image-rendering: pixelated;
-  flex: 0 1 640px;
-  min-width: 320px;
-  height: auto;
   cursor: crosshair;
 }
 
 #chronicle-panel {
-  flex: 1 1 0;
+  flex: 0 0 220px;
   display: flex;
   flex-direction: column;
-  min-width: 160px;
-  max-width: 300px;
   min-height: 0;
 }
 
