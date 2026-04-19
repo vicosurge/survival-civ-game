@@ -33,7 +33,7 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage for saves (single save slot, key `isle-of-cambrera-save-v12` as of v0.3.2 — bump on breaking state-shape changes)
+- localStorage for saves (single save slot, key `isle-of-cambrera-save-v13` as of v0.3.4 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
 ## Current mechanics (v0.3.2)
@@ -65,8 +65,8 @@ A food-job triad settles into place this version: **hunters** (transitory — be
 - **Hunter Lodge stays cheap.** The trap only works if the player is tempted. If it's expensive it just becomes a mid-late building; the point is the early-game regret curve.
 - **Auto-allocator still picks tiles** — the player never has to manually place a farmer/hunter/fisher. `findEligibleTile` sorts by `tileBonusForJob` (fertility for farmer, fishRichness for fisher, 0 otherwise) DESC, then distance ASC. When farm adjacency synergy ships (deferred v0.4+), extend `tileBonusForJob` so the auto-placer steers toward clusters.
 - **Shed order in famine:** scout → quarryman → woodcutter → hunter → fisher → farmer. Food producers protected last; between food jobs, farmers (lowest-variance, sustainable) are the last to go.
-- **Forest-tile mode lock** (`tile.job`) carried from v0.3.1: one forest, one mode at a time. Lodge bonus only applies to tiles in `hunter` mode.
-- **SAVE_KEY bumped to `v12`** — `fishRichness` on every tile, `hunting_lodge` in buildings, `"fisher"` job, `"river"` terrain. v11 saves won't load.
+- **Forest tiles have two independent slots** (`tile.hunterWorkers` + woodcutters = `tile.workers - tile.hunterWorkers`). Both can coexist on the same tile up to capacity. When the game reserve depletes, `tile.gameExhausted = true` closes the hunter slot permanently — woodcutters stay. Lodge bonus applies only to `tile.hunterWorkers > 0` tiles.
+- **SAVE_KEY bumped to `v13`** — `hunterWorkers` + `gameExhausted` replace `job` on every tile. v12 saves won't load.
 
 ## Current mechanics (v0.3.1)
 
@@ -74,7 +74,7 @@ A food-job triad settles into place this version: **hunters** (transitory — be
 
 A fourth production job alongside farmer/woodcutter/quarryman. Hunters work forest tiles and produce **3 food/year** (net +1 surplus after eating), draining the forest's hidden game reserve. This creates the early-game arc: hunt to survive → game thins → transition to farming. Woodcutters do **not** drain the same reserve — timber regrows, game doesn't.
 
-**Key invariant:** a forest tile is locked to one mode (`tile.job`: `"woodcutter"` or `"hunter"`) the moment its first worker arrives. The mode clears when workers drops to 0, so a re-opened tile can change jobs. Hunters and woodcutters cannot share the same tile.
+**Key invariant:** a forest tile tracks hunters and woodcutters independently — `tile.hunterWorkers` counts hunters; `tile.workers - tile.hunterWorkers` counts woodcutters. Both can occupy the same tile up to capacity. When the game reserve hits 0, `tile.gameExhausted = true` evicts all hunters but woodcutters remain active.
 
 **Guaranteed forest at start.** `ensureForestNearTown` (map.ts) ensures at least one forest tile is discovered on turn 1 — settlers picked a site with game to hunt.
 
@@ -234,7 +234,7 @@ Per-worker, only in `worked` state:
 - Hunter (forest): 3 food/year, drains `tile.reserve` (game population). Net +1 food surplus (hunter eats 2). Finite — the forest is hunted out; when reserve hits 0 the tile becomes exhausted and hunters are evicted.
 - Quarryman (stone): 1 stone/year, drains tile `reserve`
 
-**Forest tile mode.** `tile.job` records whether a forest tile is a logging camp (`"woodcutter"`) or hunting camp (`"hunter"`). The first worker to arrive locks in the mode; it clears to `null` when workers drops to 0 (so a fallow/reopened tile can switch). A single forest tile cannot host both hunters and woodcutters simultaneously.
+**Forest tile dual slots.** `tile.hunterWorkers` tracks the hunter headcount; `tile.workers - tile.hunterWorkers` gives woodcutters. Both can coexist. When the game reserve depletes `tile.gameExhausted` is set — the hunter slot closes permanently but woodcutters continue. Tile state (`worked`/`fallow`/`wild`) is driven by `tile.workers`; a game-exhausted tile with woodcutters stays `worked` and never enters the old `exhausted` state.
 
 **Hunting arc.** Early game: hunters provide food without the cultivation wait. Mid game: forests thin; the player must transition to farming. Starter reveal guarantees at least one forest tile is visible from turn 1 (`ensureForestNearTown` in `map.ts`).
 

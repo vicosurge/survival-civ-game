@@ -111,27 +111,24 @@ export function endYear(state: GameState): void {
         const granaryBonus = state.buildings.granary ? GRANARY_FARMER_BONUS : 0;
         foodGain += t.workers * (YIELD_PER_WORKER.farmer + t.fertility + granaryBonus);
       } else if (t.terrain === "forest") {
-        if (t.job === "hunter") {
-          // Hunters drain the same forest reserve as woodcutters — game runs out
-          // just like timber. Food yield is capped by remaining reserve. The
-          // lodge's +0.5 bonus rounds down at the tile level so the reserve
-          // stays integer.
+        if (t.hunterWorkers > 0) {
           const lodgeBonus = state.buildings.hunting_lodge ? HUNTING_LODGE_HUNTER_BONUS : 0;
-          const desired = Math.floor(t.workers * (YIELD_PER_WORKER.hunter + lodgeBonus));
+          const desired = Math.floor(t.hunterWorkers * (YIELD_PER_WORKER.hunter + lodgeBonus));
           const actual = Math.min(desired, t.reserve);
           foodGain += actual;
           t.reserve -= actual;
-        } else {
-          // Timber regrows — woodcutters never drain the reserve or exhaust the tile.
-          woodGain += t.workers * YIELD_PER_WORKER.woodcutter;
+          if (t.reserve <= 0) {
+            // Game exhausted — close the hunter slot, evict hunters, woodcutters stay.
+            t.gameExhausted = true;
+            t.workers -= t.hunterWorkers;
+            t.hunterWorkers = 0;
+            exhaustionNotes.push(`the hunting grounds near (${x},${y})`);
+            if (t.workers === 0) { t.state = "fallow"; t.yearsInState = 0; }
+          }
         }
-        if (t.reserve <= 0 && t.job === "hunter") {
-          t.state = "exhausted";
-          t.workers = 0;
-          t.job = null;
-          t.yearsInState = 0;
-          exhaustionNotes.push(`hunting grounds near (${x},${y})`);
-        }
+        // Timber regrows — woodcutters never drain the reserve.
+        const woodcutters = t.workers - t.hunterWorkers;
+        if (woodcutters > 0) woodGain += woodcutters * YIELD_PER_WORKER.woodcutter;
       } else if (t.terrain === "stone") {
         const desired = t.workers * YIELD_PER_WORKER.quarryman;
         const actual = Math.min(desired, t.reserve);
@@ -322,7 +319,7 @@ function reconcileAllocation(state: GameState): void {
     while (over > 0) {
       const slot = findWorkerToRemove(state, job);
       if (!slot) break;
-      unassignWorker(state, slot.x, slot.y);
+      unassignWorker(state, slot.x, slot.y, job);
       over -= 1;
     }
   }
@@ -332,7 +329,7 @@ function reconcileAllocation(state: GameState): void {
 export function assignWorker(state: GameState, x: number, y: number, job: Exclude<Job, "scout">): void {
   const t = state.tiles[y][x];
   if (t.workers >= t.capacity) return;
-  if (t.workers === 0) t.job = job; // lock in camp mode on first worker
+  if (job === "hunter") t.hunterWorkers += 1;
   t.workers += 1;
   if (t.state === "wild") {
     // Fishing starts immediately — nets cast, not fields tilled. All other jobs
@@ -349,16 +346,14 @@ export function assignWorker(state: GameState, x: number, y: number, job: Exclud
   }
 }
 
-export function unassignWorker(state: GameState, x: number, y: number): void {
+export function unassignWorker(state: GameState, x: number, y: number, job: Exclude<Job, "scout">): void {
   const t = state.tiles[y][x];
   if (t.workers <= 0) return;
+  if (job === "hunter" && t.terrain === "forest") t.hunterWorkers = Math.max(0, t.hunterWorkers - 1);
   t.workers -= 1;
-  if (t.workers === 0) {
-    t.job = null; // release camp mode so the tile can be re-opened as either type
-    if (t.state === "cultivating") {
-      t.state = "wild";
-      t.yearsInState = 0;
-    }
+  if (t.workers === 0 && t.state === "cultivating") {
+    t.state = "wild";
+    t.yearsInState = 0;
   }
 }
 

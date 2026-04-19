@@ -22,7 +22,7 @@ export type TileState = "wild" | "cultivating" | "worked" | "fallow" | "exhauste
 
 // Maps production jobs to the terrains they work. Scouts don't occupy tiles.
 // Most jobs have a single terrain; fishers work both beach and river.
-// Both woodcutter and hunter work forest; tile.job disambiguates which is active.
+// Woodcutter and hunter both work forest and can coexist on the same tile.
 export const JOB_TERRAINS: Record<Exclude<Job, "scout">, Terrain[]> = {
   farmer: ["grass"],
   woodcutter: ["forest"],
@@ -35,15 +35,14 @@ export interface Tile {
   terrain: Terrain;
   discovered: boolean;
   state: TileState;
-  capacity: number;    // max workers this tile can hold; 0 for non-workable terrain
-  workers: number;     // currently assigned workers (0..capacity)
-  reserve: number;     // remaining resource units (forest wood/game / quarry stone); 0 for grass/beach/river
-  fertility: number;   // grass tiles only: +0 normal, +1 fertile — adds to per-worker farmer yield
-  fishRichness: number; // beach/river only: +0 normal (rolls 1–3 food/worker), +1 rich (rolls 2–4, crab/tuna)
-  yearsInState: number; // how long in current state — drives cultivating→worked and fallow→wild
-  // Forest tiles only: "woodcutter" = logging camp, "hunter" = hunting camp, null = unassigned.
-  // Cleared when workers drops to 0 so a fallow/re-opened tile can switch modes.
-  job: Exclude<Job, "scout"> | null;
+  capacity: number;       // max workers this tile can hold; 0 for non-workable terrain
+  workers: number;        // currently assigned workers (0..capacity); includes both hunters and woodcutters
+  hunterWorkers: number;  // forest only: subset of workers that are hunters; woodcutters = workers - hunterWorkers
+  gameExhausted: boolean; // forest only: game reserve depleted — hunter slot permanently closed, woodcutters may remain
+  reserve: number;        // remaining resource units (forest game / quarry stone); 0 for grass/beach/river
+  fertility: number;      // grass tiles only: +0 normal, +1 fertile — adds to per-worker farmer yield
+  fishRichness: number;   // beach/river only: +0 normal (rolls 1–3 food/worker), +1 rich (rolls 2–4, crab/tuna)
+  yearsInState: number;   // how long in current state — drives cultivating→worked and fallow→wild
 }
 
 export interface LogEntry {
@@ -247,4 +246,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v12";
+export const SAVE_KEY = "isle-of-cambrera-save-v13";

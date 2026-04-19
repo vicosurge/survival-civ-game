@@ -79,11 +79,12 @@ function makeTile(terrain: Terrain): Tile {
     state: "wild",
     capacity,
     workers: 0,
+    hunterWorkers: 0,
+    gameExhausted: false,
     reserve,
     fertility,
     fishRichness,
     yearsInState: 0,
-    job: null,
   };
 }
 
@@ -281,8 +282,7 @@ export function reachableTiles(state: GameState): Array<{ x: number; y: number; 
 function tileAcceptsWorker(tile: Tile, job: Exclude<Job, "scout">): boolean {
   if (!JOB_TERRAINS[job].includes(tile.terrain)) return false;
   if (tile.state === "exhausted") return false;
-  // Forest tiles are either a logging camp or a hunting camp — not both.
-  if (tile.terrain === "forest" && tile.job !== null && tile.job !== job) return false;
+  if (job === "hunter" && tile.gameExhausted) return false;
   return tile.workers < tile.capacity;
 }
 
@@ -324,26 +324,26 @@ export function totalReachableCapacity(state: GameState, job: Exclude<Job, "scou
   for (const { tile } of reachableTiles(state)) {
     if (!terrains.includes(tile.terrain)) continue;
     if (tile.state === "exhausted") continue;
-    // Forest exclusivity: a forest tile locked to the other mode doesn't count
-    // toward this job's capacity.
-    if (tile.terrain === "forest" && tile.job !== null && tile.job !== job) continue;
+    if (job === "hunter" && tile.gameExhausted) continue;
     total += tile.capacity;
   }
   return total;
 }
 
-// Sum of workers for a given job. For forest jobs (hunter/woodcutter) we
-// filter by tile.job so the two modes don't bleed into each other's counts.
+// Sum of workers for a given job. Forest tiles track hunters and woodcutters
+// separately via hunterWorkers; all other terrain types have homogeneous workers.
 export function currentWorkers(state: GameState, job: Exclude<Job, "scout">): number {
   const terrains = JOB_TERRAINS[job];
-  const needsJobFilter = terrains.includes("forest");
   let n = 0;
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const t = state.tiles[y][x];
       if (!terrains.includes(t.terrain)) continue;
-      if (needsJobFilter && t.terrain === "forest" && t.job !== job) continue;
-      n += t.workers;
+      if (t.terrain === "forest") {
+        n += job === "hunter" ? t.hunterWorkers : t.workers - t.hunterWorkers;
+      } else {
+        n += t.workers;
+      }
     }
   }
   return n;
@@ -356,14 +356,17 @@ export function findWorkerToRemove(
   job: Exclude<Job, "scout">,
 ): { x: number; y: number } | null {
   const terrains = JOB_TERRAINS[job];
-  const needsJobFilter = terrains.includes("forest");
   let best: { x: number; y: number; dist: number } | null = null;
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const t = state.tiles[y][x];
       if (!terrains.includes(t.terrain)) continue;
-      if (needsJobFilter && t.terrain === "forest" && t.job !== job) continue;
-      if (t.workers <= 0) continue;
+      if (t.terrain === "forest") {
+        if (job === "hunter" && t.hunterWorkers <= 0) continue;
+        if (job === "woodcutter" && t.workers - t.hunterWorkers <= 0) continue;
+      } else if (t.workers <= 0) {
+        continue;
+      }
       const dist = cheby(x, y, state.town.x, state.town.y);
       if (best === null || dist > best.dist) best = { x, y, dist };
     }

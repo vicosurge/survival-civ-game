@@ -302,7 +302,7 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
       if (state.scouts > 0) state.scouts -= 1;
     } else {
       const slot = findWorkerToRemove(state, job);
-      if (slot) unassignWorker(state, slot.x, slot.y);
+      if (slot) unassignWorker(state, slot.x, slot.y, job);
     }
     onChange();
   });
@@ -449,7 +449,14 @@ function describeTile(t: Tile, x: number, y: number): string {
   const lines: string[] = [];
   lines.push(`<div class="tile-title">${terrainLabel(t)} <span class="coord">(${x},${y})</span></div>`);
   lines.push(`<div class="tile-state">${stateLabel(t)}</div>`);
-  if (t.capacity > 0) {
+  if (t.terrain === "forest" && t.capacity > 0) {
+    const woodcutters = t.workers - t.hunterWorkers;
+    const parts: string[] = [];
+    if (t.hunterWorkers > 0) parts.push(`${t.hunterWorkers} hunter${t.hunterWorkers > 1 ? "s" : ""}`);
+    if (woodcutters > 0) parts.push(`${woodcutters} woodcutter${woodcutters > 1 ? "s" : ""}`);
+    const detail = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+    lines.push(`<div>Workers: ${t.workers}/${t.capacity}${detail}</div>`);
+  } else if (t.capacity > 0) {
     lines.push(`<div>Workers: ${t.workers}/${t.capacity}</div>`);
   }
   if (t.terrain === "grass" && t.fertility > 0) {
@@ -458,11 +465,20 @@ function describeTile(t: Tile, x: number, y: number): string {
   if ((t.terrain === "beach" || t.terrain === "river") && t.fishRichness > 0) {
     lines.push(`<div class="fertile">Rich waters — crab, tuna, shoals</div>`);
   }
-  if (t.terrain === "forest" || t.terrain === "stone") {
+  if (t.terrain === "forest") {
+    if (t.gameExhausted) {
+      lines.push(`<div class="muted">Game: exhausted — no more hunters; woodcutters may remain</div>`);
+    } else if (t.state !== "wild") {
+      lines.push(`<div>Game reserve: ${t.reserve}</div>`);
+    } else {
+      lines.push(`<div class="muted">Game reserve: unknown</div>`);
+    }
+  }
+  if (t.terrain === "stone") {
     if (t.state === "exhausted") {
       lines.push(`<div class="muted">Reserve: exhausted</div>`);
     } else if (t.state === "worked") {
-      lines.push(`<div>Reserve: ${t.reserve} (known — depletes as worked)</div>`);
+      lines.push(`<div>Reserve: ${t.reserve}</div>`);
     } else {
       lines.push(`<div class="muted">Reserve: unknown</div>`);
     }
@@ -474,8 +490,14 @@ function terrainLabel(t: Tile): string {
   if (t.state === "worked" || t.state === "fallow") {
     if (t.terrain === "grass") return t.state === "worked" ? "Farmland" : "Fallow Farmland";
     if (t.terrain === "forest") {
-      if (t.job === "hunter") return t.state === "worked" ? "Hunting Camp" : "Abandoned Camp";
-      return t.state === "worked" ? "Logging Camp" : "Abandoned Camp";
+      const hasHunters = t.hunterWorkers > 0;
+      const hasWoodcutters = t.workers - t.hunterWorkers > 0;
+      if (t.state === "worked") {
+        if (hasHunters && hasWoodcutters) return "Forest Camp";
+        if (hasHunters) return "Hunting Camp";
+        return "Logging Camp";
+      }
+      return "Abandoned Camp";
     }
     if (t.terrain === "stone") return t.state === "worked" ? "Quarry" : "Idle Quarry";
     if (t.terrain === "beach") return t.state === "worked" ? "Fishing Beach" : "Beach";

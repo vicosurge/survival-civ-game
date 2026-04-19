@@ -111,7 +111,7 @@ function placeStarterWorker(state: GameState, job: Exclude<import("./types").Job
   const slot = findEligibleTile(state, job);
   if (!slot) return;
   const tile = state.tiles[slot.y][slot.x];
-  if (tile.workers === 0) tile.job = job;
+  if (job === "hunter") tile.hunterWorkers += 1;
   tile.workers += 1;
   tile.state = "worked";
   tile.yearsInState = 0;
@@ -196,12 +196,12 @@ export function projectedYields(state: GameState): {
       if (t.workers <= 0) continue;
       if (t.terrain === "grass") foodProd += t.workers * (YIELD_PER_WORKER.farmer + t.fertility + (state.buildings.granary ? GRANARY_FARMER_BONUS : 0));
       else if (t.terrain === "forest") {
-        if (t.job === "hunter") {
+        if (t.hunterWorkers > 0) {
           const lodgeBonus = state.buildings.hunting_lodge ? HUNTING_LODGE_HUNTER_BONUS : 0;
-          foodProd += t.workers * (YIELD_PER_WORKER.hunter + lodgeBonus);
-        } else {
-          woodProd += t.workers * YIELD_PER_WORKER.woodcutter;
+          foodProd += t.hunterWorkers * (YIELD_PER_WORKER.hunter + lodgeBonus);
         }
+        const woodcutters = t.workers - t.hunterWorkers;
+        if (woodcutters > 0) woodProd += woodcutters * YIELD_PER_WORKER.woodcutter;
       }
       else if (t.terrain === "stone") stoneProd += t.workers * YIELD_PER_WORKER.quarryman;
       else if (t.terrain === "beach" || t.terrain === "river") {
