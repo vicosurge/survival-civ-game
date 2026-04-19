@@ -81,6 +81,7 @@ html, body {
   gap: 1rem;
   padding: 1rem;
   min-height: 0;
+  overflow-x: auto;
 }
 
 #map {
@@ -92,10 +93,10 @@ html, body {
 }
 
 #chronicle-panel {
-  flex: 1 1 0;
+  flex: 1 1 200px;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-width: 200px;
   max-width: 300px;
   min-height: 0;
 }
