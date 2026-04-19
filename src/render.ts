@@ -3,6 +3,7 @@ import { GameState, MAP_H, MAP_W, Terrain, Tile, TILE_SIZE } from "./types";
 const TERRAIN_COLORS: Record<Terrain, string> = {
   water: "#1a3a5c",
   beach: "#c9a870",
+  river: "#2e6b88",
   grass: "#4a7c3a",
   forest: "#2a5a28",
   stone: "#8a7a6a",
@@ -79,6 +80,9 @@ function drawTile(
   if (tile.terrain === "grass" && tile.fertility > 0 && tile.state !== "exhausted") {
     drawFertileMark(ctx, px, py);
   }
+  if ((tile.terrain === "beach" || tile.terrain === "river") && tile.fishRichness > 0) {
+    drawRichWaterMark(ctx, px, py);
+  }
 
   if (tile.state === "cultivating") drawScaffolding(ctx, px, py);
   if (tile.state === "fallow") drawWeeds(ctx, px, py);
@@ -108,6 +112,7 @@ function drawWildDecor(ctx: CanvasRenderingContext2D, px: number, py: number, ti
     case "stone": drawRocks(ctx, px, py); break;
     case "mountain": drawPeak(ctx, px, py); break;
     case "water": drawRipples(ctx, px, py); break;
+    case "river": drawRiverFlow(ctx, px, py); break;
     case "beach": drawBeachDots(ctx, px, py); break;
   }
 }
@@ -121,11 +126,22 @@ function drawFertileMark(ctx: CanvasRenderingContext2D, px: number, py: number):
   ctx.fillRect(px + 22, py + 24, 2, 2);
 }
 
+// Foam flecks on rich fishing waters — crab/tuna shoals churning the surface.
+function drawRichWaterMark(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+  ctx.fillStyle = "rgba(230,245,255,0.75)";
+  ctx.fillRect(px + 6, py + 8, 2, 2);
+  ctx.fillRect(px + 22, py + 12, 2, 2);
+  ctx.fillRect(px + 14, py + 20, 2, 2);
+  ctx.fillRect(px + 26, py + 24, 2, 2);
+}
+
 function drawWorkedDecor(ctx: CanvasRenderingContext2D, px: number, py: number, tile: Tile): void {
   switch (tile.terrain) {
     case "grass": drawFarmRows(ctx, px, py); break;
     case "forest": drawLoggingCamp(ctx, px, py); break;
     case "stone": drawQuarryTerraces(ctx, px, py); break;
+    case "beach": drawFishingBoat(ctx, px, py); break;
+    case "river": drawRiverWeir(ctx, px, py); break;
   }
 }
 
@@ -255,6 +271,43 @@ function drawRipples(ctx: CanvasRenderingContext2D, px: number, py: number): voi
   ctx.fillRect(px + 4, py + 10, 6, 1);
   ctx.fillRect(px + 18, py + 18, 8, 1);
   ctx.fillRect(px + 10, py + 24, 5, 1);
+}
+
+function drawRiverFlow(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+  ctx.fillStyle = "rgba(200,230,255,0.22)";
+  ctx.fillRect(px + 6, py + 8, 10, 1);
+  ctx.fillRect(px + 14, py + 16, 12, 1);
+  ctx.fillRect(px + 4, py + 24, 8, 1);
+  ctx.fillStyle = "rgba(60,130,170,0.5)";
+  ctx.fillRect(px + 20, py + 10, 3, 1);
+  ctx.fillRect(px + 10, py + 20, 3, 1);
+}
+
+function drawFishingBoat(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+  // Small hull on the water's edge + a stick mast.
+  ctx.fillStyle = "#5a3820";
+  ctx.fillRect(px + 10, py + 16, 12, 3);
+  ctx.fillRect(px + 12, py + 19, 8, 1);
+  ctx.fillStyle = "#8a5a30";
+  ctx.fillRect(px + 15, py + 7, 1, 9);
+  ctx.fillStyle = "rgba(240,230,200,0.85)";
+  ctx.fillRect(px + 16, py + 8, 5, 6);
+  // Small net ripple nearby
+  ctx.fillStyle = "rgba(230,245,255,0.4)";
+  ctx.fillRect(px + 4, py + 22, 5, 1);
+  ctx.fillRect(px + 22, py + 24, 6, 1);
+}
+
+function drawRiverWeir(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+  // A staked fish weir across the current — dark posts with a central mesh.
+  ctx.fillStyle = "#3a2516";
+  for (let i = 0; i < 5; i++) ctx.fillRect(px + 6 + i * 5, py + 8, 1, 16);
+  ctx.fillStyle = "rgba(60,45,30,0.5)";
+  ctx.fillRect(px + 6, py + 14, 22, 1);
+  ctx.fillRect(px + 6, py + 18, 22, 1);
+  // A lone basket / trap bulge
+  ctx.fillStyle = "#6a4a28";
+  ctx.fillRect(px + 13, py + 21, 5, 3);
 }
 
 function drawBeachDots(ctx: CanvasRenderingContext2D, px: number, py: number): void {

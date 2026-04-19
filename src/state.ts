@@ -4,6 +4,7 @@ import {
   FOOD_PER_ADULT,
   FOOD_PER_CHILD,
   GameState,
+  HUNTING_LODGE_HUNTER_BONUS,
   Job,
   LIFESPAN_RANGE,
   MORALE_MAX,
@@ -85,11 +86,11 @@ export function newGame(): GameState {
     boat: { status: "docked", returnYear: null, crew: [] },
     scriptedWaves: rollScriptedWaves(),
     pendingMerchant: false,
-    buildings: { granary: false, palisade: false, well: false },
+    buildings: { granary: false, palisade: false, well: false, hunting_lodge: false },
     log: [
       {
         year: 1,
-        text: "A small band of refugees beaches on Cambrera's southern shore. They break ground on farmsteads near the landing — food, first and foremost.",
+        text: "A small band of refugees beaches on Cambrera's southern shore. Before ploughs turn soil, hunting parties take to the nearer woods — food, first and foremost.",
         tone: "neutral",
       },
     ],
@@ -97,11 +98,11 @@ export function newGame(): GameState {
     selectedTile: null,
   };
 
-  placeStarterWorker(state, "farmer");
-  placeStarterWorker(state, "farmer");
-  placeStarterWorker(state, "farmer");
-  // No starter woodcutter — food is the priority; player decides where the
-  // remaining adult goes (more farming, scouting, quarrying, or resting).
+  placeStarterWorker(state, "hunter");
+  placeStarterWorker(state, "hunter");
+  placeStarterWorker(state, "hunter");
+  // 5th adult is intentionally idle — the player decides whether to push for
+  // more hunting, scouting, or break the first ground for farming.
 
   return state;
 }
@@ -162,6 +163,7 @@ export function assignedTotal(state: GameState): number {
     currentWorkers(state, "woodcutter") +
     currentWorkers(state, "quarryman") +
     currentWorkers(state, "hunter") +
+    currentWorkers(state, "fisher") +
     state.scouts
   );
 }
@@ -194,10 +196,19 @@ export function projectedYields(state: GameState): {
       if (t.workers <= 0) continue;
       if (t.terrain === "grass") foodProd += t.workers * (YIELD_PER_WORKER.farmer + t.fertility + (state.buildings.granary ? GRANARY_FARMER_BONUS : 0));
       else if (t.terrain === "forest") {
-        if (t.job === "hunter") foodProd += t.workers * YIELD_PER_WORKER.hunter;
-        else woodProd += t.workers * YIELD_PER_WORKER.woodcutter;
+        if (t.job === "hunter") {
+          const lodgeBonus = state.buildings.hunting_lodge ? HUNTING_LODGE_HUNTER_BONUS : 0;
+          foodProd += t.workers * (YIELD_PER_WORKER.hunter + lodgeBonus);
+        } else {
+          woodProd += t.workers * YIELD_PER_WORKER.woodcutter;
+        }
       }
       else if (t.terrain === "stone") stoneProd += t.workers * YIELD_PER_WORKER.quarryman;
+      else if (t.terrain === "beach" || t.terrain === "river") {
+        // Fisher projection uses the average of the rolled range. Actual yield
+        // each harvest is random — see applyFisherYield in turn.ts.
+        foodProd += t.workers * (YIELD_PER_WORKER.fisher + t.fishRichness);
+      }
     }
   }
   const foodCons = adultCount(state) * FOOD_PER_ADULT + childCount(state) * FOOD_PER_CHILD;

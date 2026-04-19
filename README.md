@@ -6,7 +6,17 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## Status
 
-**v0.3.0 — Morale.** A 0–100 settlement-wide mood stat. Starts at 80. Rises when the year goes well (food surplus, coming-of-age, bountiful harvests, births, newcomers) and falls when it doesn't (deficits, famine deaths, bandits, locusts, wildfires, elder deaths). It's a *lagging* indicator — no passive drift, so a quiet year leaves it where it is.
+**v0.3.2 — Hunters, Fishers, a River.** Settlers no longer start as farmers — they start as **hunters**, stalking the forest that fed them the day they beached. A small river now runs from Cambrera's central mountains down to the southern coast, making the grass beside it more fertile and opening a second food-from-water job: **fishers**, working beaches and river tiles, with yields that swing year to year (sometimes crab and tuna, sometimes a thin day on the net). A new building, the **Hunting Lodge**, tempts the early game with +0.5 food per hunter — and becomes regret once the forest thins.
+
+### In v0.3.2
+- **Starter defaults swap.** 3 hunters + 1 scout replace the old 3 farmers + 1 scout; intro log reframes the first year as hunting parties, not ploughs.
+- **Hunter Lodge building.** Cheap (10 wood), +0.5 food per hunter per year. Deliberately a trap: the bonus is sunk once forests exhaust.
+- **River terrain.** A five-tile river threads the map from mountain to south coast with a small delta. Grass tiles adjacent to the river roll fertile automatically — a visible geographic hook for where farming is rich.
+- **Fisher job.** Works beach **and** river tiles. Yield rolls fresh each harvest: baseline shallows roll 1–3 food/worker, rich waters (~20% of water tiles) roll 2–4. No cultivation wait and no fallow — you cast nets, you don't till them. No reserve drain either: water stays water.
+- **Fishing grounds sketch.** Rich waters (crab, tuna, shoals) get a foam-fleck marker on the map and a tile-info line. Worked beach shows a small fishing boat; worked river shows a staked weir.
+- **Forest-tile mode lock.** A forest is locked to `"hunter"` or `"woodcutter"` the moment its first worker arrives; clears when workers drop to 0. One mode per tile at a time.
+- **Starter guarantees extended.** `ensureForestNearTown` guarantees a discovered forest on turn 1 (you can hunt immediately). `ensureFishingNearTown` guarantees a discovered beach or river tile in reach.
+- Save key bumped to `v12` (new `fishRichness` on tiles, new `hunting_lodge` on buildings, new `"fisher"` job, new `"river"` terrain).
 
 ### In v0.3.0
 - **"Mood" chip in the topbar** with green/gold/red colouring above 70 / 40 / below 40.
@@ -56,14 +66,16 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 - **Pops have lifecycles.** Each pop tracks age + lifespan. Children (age <4) eat half but can't work. Adults consume more and do all the labor. Old age takes them in years 8–12.
 - **Famine bites children first.** When food runs out, the youngest die before adults — deliberate long-run pressure to keep food a priority before births pay back.
 - 5 resources: food, wood, stone, pops, gold
-- 4 jobs (farmer, woodcutter, quarryman, scout)
+- 6 jobs (farmer, hunter, fisher, woodcutter, quarryman, scout)
 - 10 random events (bountiful harvest, locusts, merchants, bandits, ruins, newcomers, wildfires, mild winter, strange lights, quiet year)
 - **Tile info panel.** Click any discovered tile for its terrain, state, workers/capacity, and known reserve.
 - Auto-save to `localStorage` on each turn
 
 ### Deferred to later versions
-- Roads (v0.3) — extend reach deliberately; cost stone/wood/time
-- Buildings beyond tile conversions (granaries, watchtowers, etc.)
+- Roads (v0.4) — extend reach deliberately; cost stone/wood/time
+- **Dock / pier** — longer fishing range and better trade rates
+- **Blacksmith** — tools synergy across farmer/hunter/fisher
+- **Farm adjacency synergy** — working adjacent fields rewards deliberate clustering
 - Seasonal turns (spring / summer / autumn / winter)
 - Combat — bandits promoted from event to persistent threat; militia allocation
 - Diplomacy with other settlements

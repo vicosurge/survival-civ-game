@@ -1,14 +1,15 @@
-export type Terrain = "water" | "beach" | "grass" | "forest" | "stone" | "mountain";
+export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
 
-export type Job = "farmer" | "woodcutter" | "quarryman" | "hunter" | "scout";
+export type Job = "farmer" | "woodcutter" | "quarryman" | "hunter" | "fisher" | "scout";
 
-export const JOBS: Job[] = ["farmer", "woodcutter", "quarryman", "hunter", "scout"];
+export const JOBS: Job[] = ["farmer", "hunter", "fisher", "woodcutter", "quarryman", "scout"];
 
 export const JOB_LABEL: Record<Job, string> = {
   farmer: "Farmer",
   woodcutter: "Woodcutter",
   quarryman: "Quarryman",
   hunter: "Hunter",
+  fisher: "Fisher",
   scout: "Scout",
 };
 
@@ -19,13 +20,15 @@ export const JOB_LABEL: Record<Job, string> = {
 // (permanent in v0.2).
 export type TileState = "wild" | "cultivating" | "worked" | "fallow" | "exhausted";
 
-// Maps production jobs to the terrain they work. Scouts don't occupy tiles.
+// Maps production jobs to the terrains they work. Scouts don't occupy tiles.
+// Most jobs have a single terrain; fishers work both beach and river.
 // Both woodcutter and hunter work forest; tile.job disambiguates which is active.
-export const JOB_TERRAIN: Record<Exclude<Job, "scout">, Terrain> = {
-  farmer: "grass",
-  woodcutter: "forest",
-  quarryman: "stone",
-  hunter: "forest",
+export const JOB_TERRAINS: Record<Exclude<Job, "scout">, Terrain[]> = {
+  farmer: ["grass"],
+  woodcutter: ["forest"],
+  quarryman: ["stone"],
+  hunter: ["forest"],
+  fisher: ["beach", "river"],
 };
 
 export interface Tile {
@@ -34,8 +37,9 @@ export interface Tile {
   state: TileState;
   capacity: number;    // max workers this tile can hold; 0 for non-workable terrain
   workers: number;     // currently assigned workers (0..capacity)
-  reserve: number;     // remaining resource units (forest wood/game / quarry stone); 0 for grass
+  reserve: number;     // remaining resource units (forest wood/game / quarry stone); 0 for grass/beach/river
   fertility: number;   // grass tiles only: +0 normal, +1 fertile — adds to per-worker farmer yield
+  fishRichness: number; // beach/river only: +0 normal (rolls 1–3 food/worker), +1 rich (rolls 2–4, crab/tuna)
   yearsInState: number; // how long in current state — drives cultivating→worked and fallow→wild
   // Forest tiles only: "woodcutter" = logging camp, "hunter" = hunting camp, null = unassigned.
   // Cleared when workers drops to 0 so a fallow/re-opened tile can switch modes.
@@ -78,7 +82,7 @@ export interface ScriptedWave {
 export type TradeAction = "sell" | "buy";
 export type TradeResource = "food" | "wood" | "stone";
 
-export type BuildingId = "granary" | "palisade" | "well";
+export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge";
 
 export interface BuildingDef {
   id: BuildingId;
@@ -122,7 +126,8 @@ export const FOOD_PER_ADULT = 2;
 export const FOOD_PER_CHILD = 1;
 
 // Per-worker yields when the tile is in `worked` state. Flat rates; tile capacity
-// limits *how many workers fit*, not the rate per worker.
+// limits *how many workers fit*, not the rate per worker. Fisher is the average
+// of the rolled range — actual per-year yield is randomised (see FISHER_YIELD_*).
 export const YIELD_PER_WORKER: Record<Exclude<Job, "scout">, number> = {
   farmer: 2,
   woodcutter: 2,
@@ -131,11 +136,23 @@ export const YIELD_PER_WORKER: Record<Exclude<Job, "scout">, number> = {
   // farmer on fertile grass, but finite — the forest reserve is shared with
   // woodcutters and depletes the same way.
   hunter: 3,
+  // Projection average. Baseline fishing tile rolls 1–3 food/worker/year
+  // (avg 2, break-even), rich tile rolls 2–4 (avg 3, net +1 surplus).
+  fisher: 2,
 };
+
+// Fisher per-worker yield ranges, rolled fresh each harvest. Variance is the
+// point — "sometimes they bring in a lot, sometimes less."
+export const FISHER_YIELD_BASE: [number, number] = [1, 3];
+export const FISHER_YIELD_RICH: [number, number] = [2, 4];
 
 // Extra food per farmer when a granary is built. 0.5 means an odd farmer count
 // rounds down via Math.floor at collection time.
 export const GRANARY_FARMER_BONUS = 0.5;
+
+// Extra food per hunter when the hunting lodge is built. Same 0.5 shape as the
+// granary bonus. The lodge is a trap — the wood is sunk once forests exhaust.
+export const HUNTING_LODGE_HUNTER_BONUS = 0.5;
 
 export const SCOUT_REVEAL_PER_YEAR = 2;
 
@@ -146,11 +163,14 @@ export const BOAT_REFUGEE_WEIGHTS: [number, number, number, number] = [2, 4, 3, 
 // Per-crew chance of being lost at sea (rough seas, bandit galleys, bad luck).
 export const BOAT_CREW_LOSS_CHANCE = 0.1;
 
-// Random capacity ranges when generating the island.
-export const CAPACITY_RANGE: Record<"grass" | "forest" | "stone", [number, number]> = {
+// Random capacity ranges when generating the island. Beach/river are narrow
+// working bands — one or two fishers per tile.
+export const CAPACITY_RANGE: Record<"grass" | "forest" | "stone" | "beach" | "river", [number, number]> = {
   grass: [2, 8],
   forest: [2, 6],
   stone: [1, 4],
+  beach: [1, 2],
+  river: [1, 2],
 };
 
 // Hidden resource reserves for depletable tiles.
@@ -166,6 +186,10 @@ export const CULTIVATION_YEARS = 1;
 
 // Fraction of grass tiles that roll fertile (+1 food per farmer per year).
 export const FERTILE_GRASS_CHANCE = 0.3;
+
+// Fraction of beach/river tiles that roll as rich fishing grounds (crab, tuna,
+// shoals) — higher per-year yield range.
+export const FISH_RICH_CHANCE = 0.2;
 
 // Scripted Exarum-survivor waves — target years and jitter (±). Rolled at
 // newGame() so each playthrough varies while keeping the narrative arc intact.
@@ -215,6 +239,12 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     description: "A stone-lined well beside the timber yards. Blocks wildfires.",
     cost: { wood: 10, stone: 15 },
   },
+  hunting_lodge: {
+    id: "hunting_lodge",
+    name: "Hunting Lodge",
+    description: "Drying racks, stretched hides, a pit for rendering fat. Each hunter yields +0.5 food/year — while the forest lasts.",
+    cost: { wood: 10 },
+  },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v11";
+export const SAVE_KEY = "isle-of-cambrera-save-v12";

@@ -33,8 +33,40 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage for saves (single save slot, key `isle-of-cambrera-save-v11` as of v0.3.1 — bump on breaking state-shape changes)
+- localStorage for saves (single save slot, key `isle-of-cambrera-save-v12` as of v0.3.2 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
+
+## Current mechanics (v0.3.2)
+
+### River + Fishers + Hunting Lodge (v0.3.2)
+
+A food-job triad settles into place this version: **hunters** (transitory — beat break-even immediately but drain a forest reserve), **farmers** (sustainable — break-even on baseline grass, +1 on fertile, deferred by cultivation year), and **fishers** (variable — random yield each year, no reserve, no cultivation). Each is distinct by long-term character, not just by terrain.
+
+**River.** Five tiles threaded from the central mountains to the south coast with a small delta. Defined in `ISLAND` (map.ts) with the `r` char. Any grass tile within Chebyshev-1 of a river tile is set fertile during island build (`applyRiverFertility`) — a visible geographic hook: the player can see where farming is rich before clearing a single field. Rivers themselves are workable by fishers at capacity 1–2 (see `CAPACITY_RANGE`).
+
+**Fishers.**
+- Work both `beach` and `river` tiles — the first multi-terrain job. `JOB_TERRAINS` is an array (`Exclude<Job,"scout">` → `Terrain[]`) rather than the old scalar map.
+- Yield is randomised per worker per harvest: baseline water rolls `FISHER_YIELD_BASE = [1,3]`, rich water rolls `FISHER_YIELD_RICH = [2,4]`. Rolled fresh in `turn.ts` Step 1. Projection uses the average (2 and 3 respectively).
+- No cultivation and no fallow. Assigning a fisher goes `wild → worked` directly; pulling the last one goes `worked → wild`. Water doesn't care if you show up.
+- No reserve drain. You can fish forever; variance is the only risk.
+- `fishRichness: 0 | 1` on beach/river tiles, rolled at `FISH_RICH_CHANCE = 0.2`. Surface as "Rich waters — crab, tuna, shoals" in the tile info panel; drawn as foam flecks on the map.
+- `ensureFishingNearTown` guarantees a discovered beach or river tile in reach on turn 1.
+
+**Hunting Lodge (trap/buff building).**
+- Cost: 10 wood. Grants +0.5 food per hunter per year (`HUNTING_LODGE_HUNTER_BONUS`), floored at collection time.
+- Deliberate trap: the bonus is only useful while forests last. Once the forest reserve is spent the lodge is a dead asset — and the 10 wood sunk in it is wood that can't build a palisade or a future dock.
+- Same 0.5 shape as the granary bonus so floor-at-collection logic can be reused: `Math.floor(t.workers * (YIELD + lodgeBonus))` before draining reserve keeps reserves integer.
+- Does *not* block any event — blocker is just one possible effect (granary/palisade/well use it); this building is a pure buff-with-tradeoff.
+
+**Design intent to preserve:**
+- **Food-job triad must stay differentiated.** If a future change lets hunters refill the forest, or lets fishers have a reserve, the triad collapses into "three ways to do the same thing." Keep hunter=transitory, farmer=sustainable+compounding (future: farm adjacency), fisher=variable+scaling (future: dock/pier for longer range and trade).
+- **River fertility is automatic, not something to tune per-tile.** Keep `applyRiverFertility` as a Chebyshev-1 sweep run after tiles exist — bolting new conditions onto it defeats the "water = rich land" visual legibility.
+- **Fishers skip both cultivating and fallow intentionally.** Don't reintroduce those states as "consistency" — the mechanical variance (random yield) and the narrative ("you cast nets, you don't till them") are the features.
+- **Hunter Lodge stays cheap.** The trap only works if the player is tempted. If it's expensive it just becomes a mid-late building; the point is the early-game regret curve.
+- **Auto-allocator still picks tiles** — the player never has to manually place a farmer/hunter/fisher. `findEligibleTile` sorts by `tileBonusForJob` (fertility for farmer, fishRichness for fisher, 0 otherwise) DESC, then distance ASC. When farm adjacency synergy ships (deferred v0.4+), extend `tileBonusForJob` so the auto-placer steers toward clusters.
+- **Shed order in famine:** scout → quarryman → woodcutter → hunter → fisher → farmer. Food producers protected last; between food jobs, farmers (lowest-variance, sustainable) are the last to go.
+- **Forest-tile mode lock** (`tile.job`) carried from v0.3.1: one forest, one mode at a time. Lodge bonus only applies to tiles in `hunter` mode.
+- **SAVE_KEY bumped to `v12`** — `fishRichness` on every tile, `hunting_lodge` in buildings, `"fisher"` job, `"river"` terrain. v11 saves won't load.
 
 ## Current mechanics (v0.3.1)
 

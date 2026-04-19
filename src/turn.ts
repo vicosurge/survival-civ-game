@@ -1,6 +1,6 @@
 import { fireScriptedWave, rollEvent } from "./events";
 import { currentWorkers, exploreFrontier, findWorkerToRemove } from "./map";
-import { adultCount, applyMorale, childCount, makeBabyPop, makeNewcomerPop, totalPop } from "./state";
+import { adultCount, applyMorale, childCount, idleCount, makeBabyPop, makeNewcomerPop, totalPop } from "./state";
 import {
   ADULT_AGE,
   BOAT_CREW_LOSS_CHANCE,
@@ -11,11 +11,13 @@ import {
   BuildingId,
   CULTIVATION_YEARS,
   FALLOW_REVERT_YEARS,
+  FISHER_YIELD_BASE,
+  FISHER_YIELD_RICH,
   FOOD_PER_ADULT,
   FOOD_PER_CHILD,
   GameState,
+  HUNTING_LODGE_HUNTER_BONUS,
   Job,
-  JOB_TERRAIN,
   LogEntry,
   MAP_H,
   MAP_W,
@@ -29,6 +31,10 @@ import {
   YIELD_PER_WORKER,
   GRANARY_FARMER_BONUS,
 } from "./types";
+
+function randInt(lo: number, hi: number): number {
+  return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+}
 
 export function endYear(state: GameState): void {
   if (state.gameOver) return;
@@ -107,8 +113,11 @@ export function endYear(state: GameState): void {
       } else if (t.terrain === "forest") {
         if (t.job === "hunter") {
           // Hunters drain the same forest reserve as woodcutters — game runs out
-          // just like timber. Food yield is capped by remaining reserve.
-          const desired = t.workers * YIELD_PER_WORKER.hunter;
+          // just like timber. Food yield is capped by remaining reserve. The
+          // lodge's +0.5 bonus rounds down at the tile level so the reserve
+          // stays integer.
+          const lodgeBonus = state.buildings.hunting_lodge ? HUNTING_LODGE_HUNTER_BONUS : 0;
+          const desired = Math.floor(t.workers * (YIELD_PER_WORKER.hunter + lodgeBonus));
           const actual = Math.min(desired, t.reserve);
           foodGain += actual;
           t.reserve -= actual;
@@ -137,6 +146,14 @@ export function endYear(state: GameState): void {
           t.yearsInState = 0;
           exhaustionNotes.push(`a quarry`);
         }
+      } else if (t.terrain === "beach" || t.terrain === "river") {
+        // Variable catch per worker — the flavour mechanic. Baseline waters
+        // roll 1–3, rich waters (crab/tuna) roll 2–4. No reserve to drain;
+        // fish replenish naturally, unlike forests.
+        const [lo, hi] = t.fishRichness > 0 ? FISHER_YIELD_RICH : FISHER_YIELD_BASE;
+        let catchTotal = 0;
+        for (let w = 0; w < t.workers; w++) catchTotal += randInt(lo, hi);
+        foodGain += catchTotal;
       }
     }
   }
@@ -167,6 +184,9 @@ export function endYear(state: GameState): void {
   }
 
   // 3. Advance tile states AFTER yields (so cultivation doesn't count this year).
+  //    Fisher tiles (beach/river) skip the cultivating and fallow phases —
+  //    fishing leaves no infrastructure to wait for or preserve, so the tile
+  //    transitions straight wild↔worked.
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const t = state.tiles[y][x];
@@ -177,7 +197,11 @@ export function endYear(state: GameState): void {
           t.yearsInState = 0;
         }
       } else if (t.state === "worked" && t.workers === 0) {
-        t.state = "fallow";
+        if (t.terrain === "beach" || t.terrain === "river") {
+          t.state = "wild";
+        } else {
+          t.state = "fallow";
+        }
         t.yearsInState = 0;
       } else if (t.state === "fallow") {
         t.yearsInState += 1;
@@ -275,10 +299,16 @@ export function endYear(state: GameState): void {
 }
 
 // Shed workers until assigned total ≤ adult count. Scouts first (most flexible),
-// then quarryman/woodcutter/farmer from furthest-from-town tiles.
+// then quarryman/woodcutter/hunter/fisher/farmer from furthest-from-town tiles.
 function reconcileAllocation(state: GameState): void {
   const adults = adultCount(state);
-  let totalAssigned = state.scouts + currentWorkers(state, "farmer") + currentWorkers(state, "woodcutter") + currentWorkers(state, "quarryman") + currentWorkers(state, "hunter");
+  let totalAssigned =
+    state.scouts +
+    currentWorkers(state, "farmer") +
+    currentWorkers(state, "woodcutter") +
+    currentWorkers(state, "quarryman") +
+    currentWorkers(state, "hunter") +
+    currentWorkers(state, "fisher");
   let over = totalAssigned - adults;
   if (over <= 0) return;
 
@@ -287,8 +317,10 @@ function reconcileAllocation(state: GameState): void {
   over -= scoutShed;
 
   // Shed order: scouts first (done above), then quarrymen, woodcutters, hunters,
-  // farmers last — food producers are the last to lose workers in a crisis.
-  const prodJobs: Array<Exclude<Job, "scout">> = ["quarryman", "woodcutter", "hunter", "farmer"];
+  // fishers, farmers last — food producers drop in increasing order of
+  // long-term reliability. Hunters go before fishers (forests exhaust, fish
+  // replenish); fishers go before farmers (fisher yields are variable).
+  const prodJobs: Array<Exclude<Job, "scout">> = ["quarryman", "woodcutter", "hunter", "fisher", "farmer"];
   for (const job of prodJobs) {
     while (over > 0) {
       const slot = findWorkerToRemove(state, job);
@@ -306,7 +338,13 @@ export function assignWorker(state: GameState, x: number, y: number, job: Exclud
   if (t.workers === 0) t.job = job; // lock in camp mode on first worker
   t.workers += 1;
   if (t.state === "wild") {
-    t.state = "cultivating";
+    // Fishing starts immediately — nets cast, not fields tilled. All other jobs
+    // take a year of cultivation before they produce.
+    if (t.terrain === "beach" || t.terrain === "river") {
+      t.state = "worked";
+    } else {
+      t.state = "cultivating";
+    }
     t.yearsInState = 0;
   } else if (t.state === "fallow") {
     t.state = "worked";
@@ -331,8 +369,6 @@ export function currentJobCount(state: GameState, job: Job): number {
   if (job === "scout") return state.scouts;
   return currentWorkers(state, job);
 }
-
-export { JOB_TERRAIN };
 
 export function canExecuteTrade(
   state: GameState,
@@ -412,13 +448,7 @@ export function canDispatchBoat(state: GameState): boolean {
   if (state.gameOver) return false;
   if (state.boat.status !== "docked") return false;
   // Dispatch costs 2 adults immediately — so we need 2 idle adults available.
-  const idleAdults = adultCount(state) - (
-    state.scouts +
-    currentWorkers(state, "farmer") +
-    currentWorkers(state, "woodcutter") +
-    currentWorkers(state, "quarryman")
-  );
-  return idleAdults >= BOAT_CREW_SIZE;
+  return idleCount(state) >= BOAT_CREW_SIZE;
 }
 
 export function dispatchBoat(state: GameState): void {

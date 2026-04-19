@@ -322,6 +322,7 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
   if (job !== "scout" && idleCount(state) > 0 && !canAddProd) {
     const terrainLabel: Record<Exclude<Job, "scout">, string> = {
       farmer: "grassland", woodcutter: "forest", hunter: "forest", quarryman: "stone",
+      fisher: "shallows",
     };
     plus.title = `No ${terrainLabel[job]} in reach — send scouts`;
   }
@@ -454,6 +455,9 @@ function describeTile(t: Tile, x: number, y: number): string {
   if (t.terrain === "grass" && t.fertility > 0) {
     lines.push(`<div class="fertile">Fertile soil — +${t.fertility} food per farmer</div>`);
   }
+  if ((t.terrain === "beach" || t.terrain === "river") && t.fishRichness > 0) {
+    lines.push(`<div class="fertile">Rich waters — crab, tuna, shoals</div>`);
+  }
   if (t.terrain === "forest" || t.terrain === "stone") {
     if (t.state === "exhausted") {
       lines.push(`<div class="muted">Reserve: exhausted</div>`);
@@ -469,8 +473,13 @@ function describeTile(t: Tile, x: number, y: number): string {
 function terrainLabel(t: Tile): string {
   if (t.state === "worked" || t.state === "fallow") {
     if (t.terrain === "grass") return t.state === "worked" ? "Farmland" : "Fallow Farmland";
-    if (t.terrain === "forest") return t.state === "worked" ? "Logging Camp" : "Abandoned Camp";
+    if (t.terrain === "forest") {
+      if (t.job === "hunter") return t.state === "worked" ? "Hunting Camp" : "Abandoned Camp";
+      return t.state === "worked" ? "Logging Camp" : "Abandoned Camp";
+    }
     if (t.terrain === "stone") return t.state === "worked" ? "Quarry" : "Idle Quarry";
+    if (t.terrain === "beach") return t.state === "worked" ? "Fishing Beach" : "Beach";
+    if (t.terrain === "river") return t.state === "worked" ? "River Weir" : "River";
   }
   if (t.state === "exhausted") {
     if (t.terrain === "forest") return "Clear-cut Forest";
@@ -482,6 +491,7 @@ function terrainLabel(t: Tile): string {
     case "stone": return "Rocky Outcrop";
     case "mountain": return "Mountain";
     case "beach": return "Beach";
+    case "river": return "River";
     case "water": return "Sea";
   }
 }
