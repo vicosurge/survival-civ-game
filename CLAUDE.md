@@ -72,7 +72,7 @@ A food-job triad settles into place this version: **hunters** (transitory — be
 
 ### Hunters (v0.3.1)
 
-A fourth production job alongside farmer/woodcutter/quarryman. Hunters work forest tiles and produce **3 food/year** (net +1 surplus after eating), draining the same hidden reserve as woodcutters. This creates the early-game arc: hunt to survive → forests thin → transition to farming.
+A fourth production job alongside farmer/woodcutter/quarryman. Hunters work forest tiles and produce **3 food/year** (net +1 surplus after eating), draining the forest's hidden game reserve. This creates the early-game arc: hunt to survive → game thins → transition to farming. Woodcutters do **not** drain the same reserve — timber regrows, game doesn't.
 
 **Key invariant:** a forest tile is locked to one mode (`tile.job`: `"woodcutter"` or `"hunter"`) the moment its first worker arrives. The mode clears when workers drops to 0, so a re-opened tile can change jobs. Hunters and woodcutters cannot share the same tile.
 
@@ -230,8 +230,8 @@ fallow ──assign worker──▶ worked   (re-opened; infrastructure survives
 
 Per-worker, only in `worked` state:
 - Farmer (grass): `YIELD_PER_WORKER.farmer + tile.fertility` food/year. Base 2; fertile grass tiles add +1.
-- Woodcutter (forest): 2 wood/year, drains tile `reserve`
-- Hunter (forest): 3 food/year, drains the **same** tile `reserve` as woodcutters. Net +1 food surplus (hunter eats 2). Finite — the forest is hunted out the same way it's logged out.
+- Woodcutter (forest): 2 wood/year. Does **not** drain `tile.reserve` — timber regrows, so woodcutters can work a forest tile indefinitely.
+- Hunter (forest): 3 food/year, drains `tile.reserve` (game population). Net +1 food surplus (hunter eats 2). Finite — the forest is hunted out; when reserve hits 0 the tile becomes exhausted and hunters are evicted.
 - Quarryman (stone): 1 stone/year, drains tile `reserve`
 
 **Forest tile mode.** `tile.job` records whether a forest tile is a logging camp (`"woodcutter"`) or hunting camp (`"hunter"`). The first worker to arrive locks in the mode; it clears to `null` when workers drops to 0 (so a fallow/reopened tile can switch). A single forest tile cannot host both hunters and woodcutters simultaneously.
@@ -318,7 +318,7 @@ src/style.css       Retro palette: muted browns, gold accents, monospace font.
 
 - **Single-file hand-crafted map**, not procedural, because the focus is "does the loop feel fun" over replayability. Procedural is a later version.
 - **Variable tile capacity** (Master of Orion–style): some tiles are rich, some are poor. Poor tiles should remain useful in later versions (military outposts, watchtowers) — don't design mechanics that make low-capacity land economically worthless.
-- **Hidden reserves**, not hidden capacity: the player can count on knowing "this forest holds 5 workers" but not "how much timber is in there." Surprise runs-out is a core tension.
+- **Hidden reserves for hunters and quarrymen**, not for woodcutters: the player knows tile capacity ("5 workers max") but not the game population. Loggers work indefinitely; surprise exhaustion is for hunters and quarrymen only.
 - **Reach via worked-tile adjacency** creates visible territorial sprawl without needing a roads system yet.
 - **Starter workers skip cultivation** (placed directly in `worked` state) — year 1 shouldn't be a punishing zero-yield turn.
 - **Newest log entry on top** (unshift). Feels like a chronicle being written.

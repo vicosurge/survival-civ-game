@@ -122,18 +122,15 @@ export function endYear(state: GameState): void {
           foodGain += actual;
           t.reserve -= actual;
         } else {
-          const desired = t.workers * YIELD_PER_WORKER.woodcutter;
-          const actual = Math.min(desired, t.reserve);
-          woodGain += actual;
-          t.reserve -= actual;
+          // Timber regrows — woodcutters never drain the reserve or exhaust the tile.
+          woodGain += t.workers * YIELD_PER_WORKER.woodcutter;
         }
-        if (t.reserve <= 0) {
-          const wasHunting = t.job === "hunter";
+        if (t.reserve <= 0 && t.job === "hunter") {
           t.state = "exhausted";
           t.workers = 0;
           t.job = null;
           t.yearsInState = 0;
-          exhaustionNotes.push(wasHunting ? `hunting grounds near (${x},${y})` : `a timber stand near (${x},${y})`);
+          exhaustionNotes.push(`hunting grounds near (${x},${y})`);
         }
       } else if (t.terrain === "stone") {
         const desired = t.workers * YIELD_PER_WORKER.quarryman;
