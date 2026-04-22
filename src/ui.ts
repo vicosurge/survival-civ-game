@@ -1,9 +1,11 @@
-import { findEligibleTile, findWorkerToRemove, totalReachableCapacity } from "./map";
+import { findEligibleTile, findWorkerToRemove, isInReach, totalReachableCapacity } from "./map";
 import { adultCount, childCount, idleCount, jobCount, projectedYields, totalPop } from "./state";
 import {
   assignWorker,
   build,
+  buildRoad,
   canBuild,
+  canBuildRoad,
   canDispatchBoat,
   canExecuteTrade,
   declineTrade,
@@ -24,6 +26,8 @@ import {
   MAP_W,
   Tile,
   TILE_SIZE,
+  LONG_HOUSE_POP_GATE,
+  ROAD_COST,
   TRADE_MAX_PER_VISIT,
   TRADE_RATES,
   TradeAction,
@@ -94,7 +98,7 @@ export function renderUI(state: GameState, onAllocChange: () => void): void {
   renderAllocation(state, onAllocChange);
   renderBuildingsPanel(state, onAllocChange);
   renderShipPanel(state, onAllocChange);
-  renderTileInfo(state);
+  renderTileInfo(state, onAllocChange);
   renderLog(state);
   const endBtn = document.getElementById("end-turn-btn") as HTMLButtonElement;
   endBtn.disabled = state.gameOver || state.pendingMerchant;
@@ -375,6 +379,9 @@ function buildingRow(state: GameState, def: BuildingDef, onChange: () => void): 
   const btn = document.createElement("button");
   btn.textContent = "Build";
   btn.disabled = !canBuild(state, def.id);
+  if (def.id === "long_house" && state.pops.length < LONG_HOUSE_POP_GATE) {
+    btn.title = `Requires ${LONG_HOUSE_POP_GATE} people (${state.pops.length} now)`;
+  }
   btn.addEventListener("click", () => {
     build(state, def.id);
     onChange();
@@ -434,7 +441,7 @@ function renderShipPanel(state: GameState, onChange: () => void): void {
   panel.appendChild(btn);
 }
 
-function renderTileInfo(state: GameState): void {
+function renderTileInfo(state: GameState, onChange: () => void): void {
   const panel = document.getElementById("tile-info")!;
   if (!state.selectedTile) {
     panel.innerHTML = `<div class="hint">Click a tile to inspect it.</div>`;
@@ -443,6 +450,26 @@ function renderTileInfo(state: GameState): void {
   const { x, y } = state.selectedTile;
   const t = state.tiles[y][x];
   panel.innerHTML = describeTile(t, x, y);
+
+  if (t.discovered && !t.road && t.terrain !== "water" && t.terrain !== "mountain") {
+    const btn = document.createElement("button");
+    const inReach = isInReach(state, x, y);
+    const canRoad = canBuildRoad(state, x, y);
+    btn.textContent = `Build Road (${ROAD_COST.wood}w ${ROAD_COST.stone}s)`;
+    btn.disabled = !canRoad;
+    if (!state.buildings.long_house) {
+      btn.title = "Requires Long House";
+    } else if (!inReach) {
+      btn.title = "Tile not in reach — build roads outward from existing territory";
+    } else if (state.wood < ROAD_COST.wood || state.stone < ROAD_COST.stone) {
+      btn.title = "Not enough resources";
+    }
+    btn.addEventListener("click", () => {
+      buildRoad(state, x, y);
+      onChange();
+    });
+    panel.appendChild(btn);
+  }
 }
 
 function describeTile(t: Tile, x: number, y: number): string {

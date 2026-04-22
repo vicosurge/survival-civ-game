@@ -1,5 +1,5 @@
 import { fireScriptedWave, rollEvent } from "./events";
-import { currentWorkers, exploreFrontier, findWorkerToRemove } from "./map";
+import { currentWorkers, exploreFrontier, findWorkerToRemove, isInReach } from "./map";
 import { adultCount, applyMorale, childCount, idleCount, makeBabyPop, makeNewcomerPop, totalPop } from "./state";
 import {
   ADULT_AGE,
@@ -30,6 +30,9 @@ import {
   TradeResource,
   YIELD_PER_WORKER,
   GRANARY_FARMER_BONUS,
+  LONG_HOUSE_MORALE_BONUS,
+  LONG_HOUSE_POP_GATE,
+  ROAD_COST,
 } from "./types";
 
 function randInt(lo: number, hi: number): number {
@@ -412,6 +415,7 @@ export function declineTrade(state: GameState): LogEntry {
 export function canBuild(state: GameState, id: BuildingId): boolean {
   if (state.gameOver) return false;
   if (state.buildings[id]) return false;
+  if (id === "long_house" && state.pops.length < LONG_HOUSE_POP_GATE) return false;
   const cost = BUILDINGS[id].cost;
   if ((cost.food ?? 0) > state.food) return false;
   if ((cost.wood ?? 0) > state.wood) return false;
@@ -429,9 +433,38 @@ export function build(state: GameState, id: BuildingId): void {
   state.stone -= cost.stone ?? 0;
   state.gold -= cost.gold ?? 0;
   state.buildings[id] = true;
+  if (id === "long_house") {
+    applyMorale(state, LONG_HOUSE_MORALE_BONUS);
+    state.tiles[state.town.y][state.town.x].road = true;
+  }
   state.log.unshift({
     year: state.year,
     text: `${def.name} complete — ${def.description}`,
+    tone: "good",
+  });
+}
+
+export function canBuildRoad(state: GameState, x: number, y: number): boolean {
+  if (state.gameOver) return false;
+  if (!state.buildings.long_house) return false;
+  const t = state.tiles[y][x];
+  if (!t.discovered) return false;
+  if (t.road) return false;
+  if (t.terrain === "water" || t.terrain === "mountain") return false;
+  if (!isInReach(state, x, y)) return false;
+  if (state.wood < ROAD_COST.wood) return false;
+  if (state.stone < ROAD_COST.stone) return false;
+  return true;
+}
+
+export function buildRoad(state: GameState, x: number, y: number): void {
+  if (!canBuildRoad(state, x, y)) return;
+  state.wood -= ROAD_COST.wood;
+  state.stone -= ROAD_COST.stone;
+  state.tiles[y][x].road = true;
+  state.log.unshift({
+    year: state.year,
+    text: `A road is laid through (${x},${y}). The path holds.`,
     tone: "good",
   });
 }

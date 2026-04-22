@@ -85,6 +85,7 @@ function makeTile(terrain: Terrain): Tile {
     fertility,
     fishRichness,
     yearsInState: 0,
+    road: false,
   };
 }
 
@@ -251,14 +252,14 @@ function cheby(ax: number, ay: number, bx: number, by: number): number {
   return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 }
 
-// A tile is in reach if it's close to town OR adjacent to any worked tile.
-// Recomputed fresh each time — the grid is small (300 tiles) so we stay simple.
+// A tile is in reach if it's close to town, adjacent to any worked tile, or
+// adjacent to any road tile. Roads are permanent reach anchors.
 export function isInReach(state: GameState, x: number, y: number): boolean {
   if (cheby(x, y, state.town.x, state.town.y) <= BASE_REACH) return true;
   for (let ty = 0; ty < MAP_H; ty++) {
     for (let tx = 0; tx < MAP_W; tx++) {
       const t = state.tiles[ty][tx];
-      if (t.state !== "worked") continue;
+      if (t.state !== "worked" && !t.road) continue;
       if (cheby(x, y, tx, ty) <= WORKED_REACH) return true;
     }
   }

@@ -6,7 +6,19 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## Status
 
-**v0.3.2 — Hunters, Fishers, a River.** Settlers no longer start as farmers — they start as **hunters**, stalking the forest that fed them the day they beached. A small river now runs from Cambrera's central mountains down to the southern coast, making the grass beside it more fertile and opening a second food-from-water job: **fishers**, working beaches and river tiles, with yields that swing year to year (sometimes crab and tuna, sometimes a thin day on the net). A new building, the **Hunting Lodge**, tempts the early game with +0.5 food per hunter — and becomes regret once the forest thins.
+**v0.4 — Long House and Roads.** The settlement now has a civic milestone: once you reach 25 people, you can raise a **Long House** — a hall where the community gathers to govern itself. It raises morale, draws more survivors to Cambrera (word travels), and unlocks road construction. **Roads** are the first tile-targeted build action: click any in-reach tile, pay 2 wood + 5 stone, and lay a path. Road tiles extend your reach outward just like worked tiles do, letting you push your frontier without stationing a worker. The Long House also paves the town square automatically — the hall and the first road are the same civic moment.
+
+The island's walking range is now grounded in its actual scale: each tile is ~10 hectares (~316 m across), so unassisted reach from the town centre drops from 3 to **2 tiles** (~630 m). Everything beyond that needs roads — or the boat.
+
+### In v0.4
+- **Long House building.** Gated at 25 pops (total, including children). Cost: 20 wood + 15 stone. Grants +8 morale on construction; permanently boosts newcomers event weight (×3 when both Long House and high morale are active). Town tile gets a road automatically.
+- **Roads.** Click a discovered tile → Build Road button appears in the tile info panel. Cost 2 wood + 5 stone per tile. Tile must be in reach and non-water/mountain. Road tiles act as permanent reach anchors. Requires Long House.
+- **Reach tightened to 2.** `BASE_REACH` reduced from 3 to 2 tiles, matching the island's ~10 ha/tile scale. Roads become the necessary expansion tool rather than a quality-of-life upgrade.
+- Save key bumped to `v15` (`road` field on every tile).
+
+### In v0.3.4
+- **Hunters and woodcutters coexist on forest tiles.** A forest tile tracks both job types independently: `hunterWorkers` counts hunters; woodcutters fill the remaining capacity. Both can work the same tile simultaneously. When the game reserve depletes, `gameExhausted` closes the hunter slot permanently — woodcutters continue unaffected.
+- Save key bumped to `v13`.
 
 ### In v0.3.2
 - **Starter defaults swap.** 3 hunters + 1 scout replace the old 3 farmers + 1 scout; intro log reframes the first year as hunting parties, not ploughs.
@@ -62,7 +74,7 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 - **Visible growth.** Wild grassland → cultivating → farmland; forest → logging camp; stone outcrops → quarry. Each conversion takes 1 year and is drawn on the map.
 - **Depletion with hidden reserves.** Forests and quarries have secret amounts of timber/stone. You find out how much was there when it runs out.
 - **Reversion.** Abandoned tiles go fallow for 2 years, then revert to wild.
-- **Reach.** Tiles are workable only within 3 of town, or adjacent to any tile you're already working. Scouting is how you grow.
+- **Reach.** Tiles are workable only within 2 of town, adjacent to any worked tile, or adjacent to any road tile. Scouting reveals the frontier; roads extend it.
 - **Pops have lifecycles.** Each pop tracks age + lifespan. Children (age <4) eat half but can't work. Adults consume more and do all the labor. Old age takes them in years 8–12.
 - **Famine bites children first.** When food runs out, the youngest die before adults — deliberate long-run pressure to keep food a priority before births pay back.
 - 5 resources: food, wood, stone, pops, gold
@@ -72,7 +84,6 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 - Auto-save to `localStorage` on each turn
 
 ### Deferred to later versions
-- Roads (v0.4) — extend reach deliberately; cost stone/wood/time
 - **Dock / pier** — longer fishing range and better trade rates
 - **Blacksmith** — tools synergy across farmer/hunter/fisher
 - **Farm adjacency synergy** — working adjacent fields rewards deliberate clustering
@@ -130,10 +141,11 @@ src/
 
 ## Roadmap (rough, not committed)
 
-1. v0.3 — Roads (deliberate reach extension), maybe granaries
-2. v0.4 — Seasons
-3. v0.5 — Combat loop (bandits become a persistent threat; militia)
-4. v0.6 — Tech/era progression (medieval → renaissance)
-5. v0.7 — Diplomacy
-6. v0.8 — Procedural maps
-7. v1.0 — Pixel-art asset pack, mobile wrapper
+1. ~~v0.3 — Reach expansion, granaries~~ ✓
+2. ~~v0.4 — Long House, Roads~~ ✓
+3. v0.5 — Seasons (spring / summer / autumn / winter pacing)
+4. v0.6 — Combat loop (bandits become a persistent threat; militia allocation)
+5. v0.7 — Tech/era progression (medieval → renaissance)
+6. v0.8 — Diplomacy (the far settlement across the mountain range)
+7. v0.9 — Procedural maps
+8. v1.0 — Pixel-art asset pack, mobile wrapper

@@ -133,12 +133,14 @@ Early-game harshness reduced without touching the core farming break-even model.
 
 One-time-purchase settlement upgrades declared in `types.ts:BUILDINGS`. Each has a resource cost and (via the events table) blocks a specific negative event. `state.buildings: Record<BuildingId, boolean>` tracks what's built. UI lives in a dedicated sidebar section below Villagers (`#buildings-section`); clicking Build calls `build()` in `turn.ts` which subtracts resources and flips the flag.
 
-**The three starter buildings:**
-| Building | Cost | Bonus | Blocks |
-|---|---|---|---|
-| Granary | 30 food, 15 wood | +0.5 food/farmer/year (floored at harvest) | locusts |
-| Palisade | 20 wood, 25 stone | — | bandits |
-| Well | 10 wood, 15 stone | — | forest_fire |
+**Buildings:**
+| Building | Cost | Gate | Bonus | Blocks |
+|---|---|---|---|---|
+| Granary | 30 food, 15 wood | — | +0.5 food/farmer/year (floored at harvest) | locusts |
+| Palisade | 20 wood, 25 stone | — | — | bandits |
+| Well | 10 wood, 15 stone | — | — | forest_fire |
+| Hunting Lodge | 10 wood | — | +0.5 food/hunter/year — while forest lasts | — |
+| Long House | 20 wood, 15 stone | 25 pops | +8 morale (one-time); newcomers event weight ×3 (stacks with morale bonus) | — |
 
 **Blocker mechanism:** events carry optional `blockedBy: BuildingId` + `blockedText: string`. `rollEvent` picks normally, then if the chosen event is blocked, returns the `blockedText` as a "good" tone log and skips the `apply`. The blocked roll still consumes the year's event slot — the "averted" chronicle line *is* the event — which is narratively satisfying (the player sees their investment pay off) and keeps the turn pipeline unchanged.
 
@@ -147,6 +149,42 @@ One-time-purchase settlement upgrades declared in `types.ts:BUILDINGS`. Each has
 - **One-time purchase, no durability.** Buildings don't wear out or get destroyed. Keep it that way unless we add a raid-escalation mechanic that specifically targets structures — otherwise it's bookkeeping without payoff.
 - **Extension path:** adding a building = add a `BuildingId`, append to `BUILDINGS` table, optionally tag an event with `blockedBy` + `blockedText`. No turn.ts or UI churn. Future buildings may not block events at all (e.g. a watchtower that extends reach, a market that improves trade rates) — the blocker is one effect among many; don't couple the system to it.
 - **SAVE_KEY bumped to `v8`** because `buildings` is a new required field; v7 saves won't load.
+
+### Long House — civic milestone (v0.4)
+
+The **Long House** is a governance building gated behind **25 pops** (total, including children). It represents the moment a refugee camp becomes a deliberate community with collective decision-making — the narrative turning point toward Cambrera as an independent nation.
+
+**Effects:**
+- **+8 morale** applied once on construction via `applyMorale`.
+- **Newcomers event weight ×3** when both Long House is built and morale ≥ `MORALE_ATTRACT_THRESHOLD` (otherwise ×2 for long_house alone, ×2 for morale alone). Word spreads: an organised settlement draws survivors.
+- **Unlocks the civic building tier** — roads, militia training, and future buildings require Long House first (gate enforced in `canBuild`).
+
+**Design intent to preserve:**
+- **Pop gate is total pops, not adults.** 25 people — children included — is a real community. Using adults-only would push the gate later and feel arbitrary.
+- **The building persists even if population drops below 25.** The institution exists; you don't unlearn governance. A shrinking community still has its hall.
+- **Newcomer multiplier stacks deliberately.** High morale = people are happy here. Long House = people know you're organised. Both together is the strongest signal to outsiders. Three times base weight (≈22% chance/year vs 9% base) is meaningful without being dominant.
+- **Future Frostpunk-style decisions** (who leads, what values Cambrera holds) should be triggered by the Long House as the civic anchor. Don't wire those decisions into the random events table — add a dedicated decision system in a future version.
+- **SAVE_KEY bumped to `v15`** — `road: boolean` added to every `Tile`; v14 saves won't load.
+
+### Roads (v0.4)
+
+Roads are the first **tile-targeted construction action**. Player clicks a tile → a "Build Road" button appears in the tile info panel. Roads cost **2 wood + 5 stone** per tile, are instant, and persist permanently.
+
+**Reach mechanic:** road tiles act as reach anchors identically to worked tiles — any tile within `WORKED_REACH` (1) of a road is in reach. This lets the player push their frontier outward by chaining roads, without needing a worker stationed there.
+
+**Constraints:**
+- Requires **Long House** (civic gate). Gated in `canBuildRoad` in turn.ts.
+- Tile must be **in reach** — you build outward from existing territory, not leapfrog.
+- Cannot be placed on water or mountain tiles.
+- The **town tile gets a road automatically** when the Long House is built — narrative anchor; the hall and the first paved path are the same civic moment.
+
+**Render:** a packed-earth crosshatch overlay (horizontal + vertical bands through the tile centre, worn stone at the intersection) drawn after all other tile layers so it's always visible regardless of terrain or work state.
+
+**Design intent to preserve:**
+- **Roads extend reach, not production.** They don't yield anything — they're infrastructure. Don't add yield bonuses to road tiles without a fresh design conversation.
+- **Must stay connected to existing reach.** `canBuildRoad` enforces `isInReach` — you can't skip tiles. This keeps road networks legible on the map and forces deliberate route planning.
+- **Cost is per-tile stone-heavy.** Stone is the slowest resource; a long road requires sustained quarrying. This is intentional — roads should feel like a real commitment, not a free terrain hack.
+- **Future: road over the mountain pass.** Mountain tiles are currently blocked. When the pass mechanic ships, it should cost significantly more and be the narrative unlock for contact with the far settlement.
 
 ### Merchant trade modal (v0.2.7)
 
@@ -240,7 +278,7 @@ Per-worker, only in `worked` state:
 
 Forest and stone tiles have a **hidden** `reserve` (forest 30–120, stone 60–240). When reserve hits 0, tile becomes `exhausted` and workers are evicted.
 
-**Grass fertility** (v0.2.3). Each grass tile rolls `fertility: 0 | 1` at generation (`FERTILE_GRASS_CHANCE = 0.3`). Fertile tiles add +1 to per-farmer yield. Visible on discovery (tile info panel + a yellow-green visual marker). The starter town is guaranteed at least one fertile grass tile within `BASE_REACH` via `ensureFertileNearTown` — a bad roll can never leave the player on barren soil alone.
+**Grass fertility** (v0.2.3). Each grass tile rolls `fertility: 0 | 1` at generation (`FERTILE_GRASS_CHANCE = 0.3`). Fertile tiles add +1 to per-farmer yield. Visible on discovery (tile info panel + a yellow-green visual marker). The starter town is guaranteed at least one fertile grass tile within `BASE_REACH` (2) via `ensureFertileNearTown` — a bad roll can never leave the player on barren soil alone.
 
 Balance intent: a farmer on normal grass produces exactly as much as an adult eats (2), so farming on baseline grass is break-even. Surplus comes from **fertile tiles + children (who eat half) + events**. Scouting for fertile land is therefore a real strategic driver, not just a cap-expansion lever.
 
@@ -251,10 +289,12 @@ Each workable tile has a random `capacity` (grass 2–8, forest 2–6, stone 1�
 ### Reach
 
 A tile is workable if it's either:
-- within Chebyshev distance `BASE_REACH` (3) of the town, **OR**
+- within Chebyshev distance `BASE_REACH` (2) of the town, **OR**
 - within Chebyshev distance `WORKED_REACH` (1) of any `worked` tile.
 
-This creates territorial sprawl — working the edge of your reach extends your reach by one tile. Roads will formalize this in v0.3.
+This creates territorial sprawl — working the edge of your reach extends your reach by one tile. **Roads (v0.4)** will act as permanent reach anchors: a road tile extends reach as if it were a worked tile, without needing a worker on it. This makes roads feel like real infrastructure rather than a speed-up — the natural walking range is tight (2 tiles ≈ 630 m), so roads are necessary to hold territory beyond that.
+
+**Reach rationale (2026-04-22):** reduced from 3 to 2. Each tile = 10 hectares ≈ 316 m across. 2 tiles ≈ 630 m is an honest unassisted walking/working range for a small settlement. The island's central volcano/mountain range provides the narrative reason why reach doesn't extend further without infrastructure — terrain fragments natural movement.
 
 ### Allocator
 

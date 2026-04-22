@@ -43,6 +43,7 @@ export interface Tile {
   fertility: number;      // grass tiles only: +0 normal, +1 fertile — adds to per-worker farmer yield
   fishRichness: number;   // beach/river only: +0 normal (rolls 1–3 food/worker), +1 rich (rolls 2–4, crab/tuna)
   yearsInState: number;   // how long in current state — drives cultivating→worked and fallow→wild
+  road: boolean;          // a road has been built here — acts as a reach anchor like a worked tile
 }
 
 export interface LogEntry {
@@ -81,7 +82,14 @@ export interface ScriptedWave {
 export type TradeAction = "sell" | "buy";
 export type TradeResource = "food" | "wood" | "stone";
 
-export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge";
+export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "long_house";
+
+// Long House civic building requirements and effect.
+export const LONG_HOUSE_POP_GATE = 25;
+export const LONG_HOUSE_MORALE_BONUS = 8;
+
+// Road construction cost per tile. Requires Long House + tile in reach.
+export const ROAD_COST = { wood: 2, stone: 5 };
 
 export interface BuildingDef {
   id: BuildingId;
@@ -178,7 +186,7 @@ export const RESERVE_RANGE: Record<"forest" | "stone", [number, number]> = {
   stone: [60, 240],
 };
 
-export const BASE_REACH = 3;       // tiles within this Chebyshev distance of town are always in reach
+export const BASE_REACH = 2;       // tiles within this Chebyshev distance of town are always in reach
 export const WORKED_REACH = 1;     // additionally, tiles within this distance of any worked tile are in reach
 export const FALLOW_REVERT_YEARS = 2;
 export const CULTIVATION_YEARS = 1;
@@ -244,6 +252,12 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     description: "Drying racks, stretched hides, a pit for rendering fat. Each hunter yields +0.5 food/year — while the forest lasts.",
     cost: { wood: 10 },
   },
+  long_house: {
+    id: "long_house",
+    name: "Long House",
+    description: "A great hall where the community gathers to speak and decide together. Raises morale (+8). Word of an organised settlement spreads, drawing more survivors.",
+    cost: { wood: 20, stone: 15 },
+  },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v13";
+export const SAVE_KEY = "isle-of-cambrera-save-v15";

@@ -1,6 +1,5 @@
 import { exploreFrontier } from "./map";
-import { applyMorale, makeNewcomerPop } from "./state";
-import {
+import { applyMorale, makeNewcomerPop } from "./state";import {
   BuildingId,
   GameState,
   LogEntry,
@@ -200,7 +199,14 @@ export function fireScriptedWave(state: GameState, id: ScriptedWaveId): LogEntry
 }
 
 function adjustedWeight(ev: EventDef, state: GameState): number {
-  if (ev.id === "newcomers" && state.morale >= MORALE_ATTRACT_THRESHOLD) return ev.weight * 2;
+  if (ev.id === "newcomers") {
+    // Each condition independently adds a multiplier step: thriving (morale) and
+    // organised (long house) both attract survivors — together they're the strongest signal.
+    let mult = 1;
+    if (state.morale >= MORALE_ATTRACT_THRESHOLD) mult++;
+    if (state.buildings.long_house) mult++;
+    return ev.weight * mult;
+  }
   if (ev.id === "bandits" && state.morale <= MORALE_PREY_THRESHOLD) return ev.weight * 2;
   return ev.weight;
 }

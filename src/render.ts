@@ -86,6 +86,7 @@ function drawTile(
 
   if (tile.state === "cultivating") drawScaffolding(ctx, px, py);
   if (tile.state === "fallow") drawWeeds(ctx, px, py);
+  if (tile.road) drawRoadOverlay(ctx, px, py);
 
   // Subtle right/bottom edge darkening.
   ctx.fillStyle = "rgba(0,0,0,0.15)";
@@ -339,6 +340,17 @@ function drawTown(ctx: CanvasRenderingContext2D, px: number, py: number): void {
   ctx.fillStyle = "#d4a94a";
   ctx.fillRect(px + 15, py + 4, 1, 10);
   ctx.fillRect(px + 15, py + 4, 5, 3);
+}
+
+function drawRoadOverlay(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+  const mid = TILE_SIZE / 2;
+  // Packed-earth path: a horizontal and vertical band through the tile centre.
+  ctx.fillStyle = "rgba(180,150,100,0.55)";
+  ctx.fillRect(px, py + mid - 3, TILE_SIZE, 6);
+  ctx.fillRect(px + mid - 3, py, 6, TILE_SIZE);
+  // Worn centre stone.
+  ctx.fillStyle = "rgba(210,185,140,0.7)";
+  ctx.fillRect(px + mid - 2, py + mid - 2, 4, 4);
 }
 
 function drawSelection(ctx: CanvasRenderingContext2D, px: number, py: number): void {
