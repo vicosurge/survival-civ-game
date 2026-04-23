@@ -1,0 +1,53 @@
+name: Playtest feedback
+description: "Raw notes from a play session: what worked, what didn't, what felt off."
+labels: ["playtest"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version played
+      placeholder: v0.4.4
+    validations:
+      required: true
+  - type: input
+    id: year-reached
+    attributes:
+      label: Highest year reached
+      placeholder: Year 80
+    validations:
+      required: false
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      options:
+        - Still playing
+        - Settlement collapsed (famine)
+        - Settlement collapsed (bandits)
+        - Settlement collapsed (other)
+        - Stopped out of boredom
+        - Stopped because of a bug
+        - Other
+    validations:
+      required: false
+  - type: textarea
+    id: highlights
+    attributes:
+      label: What felt good
+      description: Moments or systems that landed.
+    validations:
+      required: false
+  - type: textarea
+    id: friction
+    attributes:
+      label: What felt off
+      description: Grindy stretches, unclear choices, UI confusion, anything that bounced you.
+    validations:
+      required: true
+  - type: textarea
+    id: ideas
+    attributes:
+      label: Rough ideas / wishes
+      description: Quick notes on what you wanted. No need to be detailed — we'll triage.
+    validations:
+      required: false

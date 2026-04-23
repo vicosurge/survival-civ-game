@@ -240,6 +240,19 @@ export function exploreFrontier(tiles: Tile[][], count: number): number {
   return revealed;
 }
 
+// Is there any undiscovered tile that could still be revealed by a scout? An
+//   undiscovered tile with at least one discovered neighbour qualifies as
+//   frontier. When there's no frontier left, scouts have nothing to do.
+export function hasUndiscoveredFrontier(tiles: Tile[][]): boolean {
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      if (tiles[y][x].discovered) continue;
+      if (hasDiscoveredNeighbor(tiles, x, y)) return true;
+    }
+  }
+  return false;
+}
+
 function hasDiscoveredNeighbor(tiles: Tile[][], x: number, y: number): boolean {
   for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
     const nx = x + dx, ny = y + dy;

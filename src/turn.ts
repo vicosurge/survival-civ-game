@@ -1,5 +1,5 @@
 import { fireScriptedWave, rollEvent } from "./events";
-import { currentWorkers, exploreFrontier, findWorkerToRemove, isInReach } from "./map";
+import { currentWorkers, exploreFrontier, findWorkerToRemove, hasUndiscoveredFrontier, isInReach } from "./map";
 import { adultCount, applyMorale, childCount, idleCount, makeBabyPop, makeNewcomerPop, totalPop } from "./state";
 import {
   ADULT_AGE,
@@ -13,6 +13,9 @@ import {
   FALLOW_REVERT_YEARS,
   FISHER_YIELD_BASE,
   FISHER_YIELD_RICH,
+  FISHING_LOSS_MIN,
+  FISHING_XP_GATE,
+  FISHING_XP_PER_STEP,
   FOOD_PER_ADULT,
   FOOD_PER_CHILD,
   GameState,
@@ -21,13 +24,16 @@ import {
   LogEntry,
   MAP_H,
   MAP_W,
+  MORALE_FOUNDER_EXTRA,
   MORALE_GROWTH_GATE,
+  MORALE_OLD_AGE_DEATH,
   Pop,
   SCOUT_REVEAL_PER_YEAR,
   TRADE_MAX_PER_VISIT,
-  TRADE_RATES,
-  TradeAction,
+  TradeBasket,
   TradeResource,
+  basketGoldDelta,
+  basketTotal,
   YIELD_PER_WORKER,
   GRANARY_FARMER_BONUS,
   LONG_HOUSE_MORALE_BONUS,
@@ -43,13 +49,24 @@ export function endYear(state: GameState): void {
   if (state.gameOver) return;
   const year = state.year;
 
+  // Per-turn population tally — elders passing, children coming of age, and
+  //   births are merged into one chronicle entry at the end of the turn.
+  //   Famine and bandit deaths stay on their own lines (they belong to those
+  //   events, not to the year's quiet turning).
+  const tally = {
+    oldAgeDeaths: 0,
+    founderOldAgeDeaths: 0,
+    comingOfAge: 0,
+    births: 0,
+  };
+
   // 0. Age everyone, handle natural deaths, count children-coming-of-age.
   const childrenBefore = childCount(state);
   for (const pop of state.pops) pop.age += 1;
-  let oldAgeDeaths = 0;
   state.pops = state.pops.filter((p) => {
     if (p.age >= p.lifespan) {
-      oldAgeDeaths += 1;
+      tally.oldAgeDeaths += 1;
+      if (p.founder) tally.founderOldAgeDeaths += 1;
       return false;
     }
     return true;
@@ -57,23 +74,17 @@ export function endYear(state: GameState): void {
   const childrenAfter = childCount(state);
   // Lifespans are ≥ 8 and children are <4, so no child ever dies of old age —
   // any drop in child count is purely coming-of-age.
-  const comingOfAge = childrenBefore - childrenAfter;
+  tally.comingOfAge = childrenBefore - childrenAfter;
 
-  if (oldAgeDeaths > 0) {
-    applyMorale(state, -oldAgeDeaths);
-    state.log.unshift({
-      year,
-      text: `${oldAgeDeaths} elder${oldAgeDeaths === 1 ? "" : "s"} pass${oldAgeDeaths === 1 ? "es" : ""} peacefully this year.`,
-      tone: "neutral",
-    });
+  if (tally.oldAgeDeaths > 0) {
+    applyMorale(
+      state,
+      -(tally.oldAgeDeaths * MORALE_OLD_AGE_DEATH
+        + tally.founderOldAgeDeaths * MORALE_FOUNDER_EXTRA),
+    );
   }
-  if (comingOfAge > 0) {
-    applyMorale(state, 2 * comingOfAge);
-    state.log.unshift({
-      year,
-      text: `${comingOfAge} child${comingOfAge === 1 ? "" : "ren"} come${comingOfAge === 1 ? "s" : ""} of age. (+${comingOfAge} idle adult${comingOfAge === 1 ? "" : "s"})`,
-      tone: "good",
-    });
+  if (tally.comingOfAge > 0) {
+    applyMorale(state, 2 * tally.comingOfAge);
   }
 
   // Reconcile early in case elders were workers.
@@ -105,6 +116,7 @@ export function endYear(state: GameState): void {
 
   // 1. Collect yields from every worked tile, draining reserves where applicable.
   let foodGain = 0, woodGain = 0, stoneGain = 0;
+  let fisherCount = 0;
   const exhaustionNotes: string[] = [];
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
@@ -151,6 +163,7 @@ export function endYear(state: GameState): void {
         let catchTotal = 0;
         for (let w = 0; w < t.workers; w++) catchTotal += randInt(lo, hi);
         foodGain += catchTotal;
+        fisherCount += t.workers;
       }
     }
   }
@@ -158,11 +171,20 @@ export function endYear(state: GameState): void {
   state.food += foodGain;
   state.wood += woodGain;
   state.stone += stoneGain;
+  state.fishingYears += fisherCount;
 
   // 2. Scouts reveal new tiles.
   const revealed = state.scouts > 0
     ? exploreFrontier(state.tiles, state.scouts * SCOUT_REVEAL_PER_YEAR)
     : 0;
+
+  // If the map is now fully known, stand down any remaining scouts — they have
+  //   nothing left to survey. They return to the settlement as idle adults.
+  let scoutsStoodDown = 0;
+  if (state.scouts > 0 && !hasUndiscoveredFrontier(state.tiles)) {
+    scoutsStoodDown = state.scouts;
+    state.scouts = 0;
+  }
 
   state.log.unshift({
     year,
@@ -171,6 +193,14 @@ export function endYear(state: GameState): void {
     }`,
     tone: "neutral",
   });
+
+  if (scoutsStoodDown > 0) {
+    state.log.unshift({
+      year,
+      text: `The island is fully mapped. ${scoutsStoodDown} scout${scoutsStoodDown === 1 ? " returns" : "s return"} to the settlement — there is nothing left to chart.`,
+      tone: "neutral",
+    });
+  }
 
   for (const note of exhaustionNotes) {
     state.log.unshift({
@@ -236,12 +266,14 @@ export function endYear(state: GameState): void {
     state.food = 0;
     let childDeaths = 0;
     let adultDeaths = 0;
+    let founderDeaths = 0;
     // Famine kills children first — a deliberate long-run pressure to keep food
     // a priority before births pay back. Each child "covers" FOOD_PER_CHILD units
     // of the shortfall; each adult covers FOOD_PER_ADULT.
     state.pops.sort((a, b) => a.age - b.age); // youngest first
     while (shortfall > 0 && state.pops.length > 0) {
       const victim = state.pops.shift()!;
+      if (victim.founder) founderDeaths += 1;
       if (victim.age >= ADULT_AGE) {
         adultDeaths += 1;
         shortfall -= FOOD_PER_ADULT;
@@ -250,13 +282,19 @@ export function endYear(state: GameState): void {
         shortfall -= FOOD_PER_CHILD;
       }
     }
-    applyMorale(state, -5 * (childDeaths + adultDeaths));
+    applyMorale(
+      state,
+      -(5 * (childDeaths + adultDeaths) + founderDeaths * MORALE_FOUNDER_EXTRA),
+    );
     const parts: string[] = [];
     if (childDeaths > 0) parts.push(`${childDeaths} child${childDeaths === 1 ? "" : "ren"}`);
     if (adultDeaths > 0) parts.push(`${adultDeaths} adult${adultDeaths === 1 ? "" : "s"}`);
+    const founderNote = founderDeaths > 0
+      ? ` ${founderDeaths === 1 ? "One was" : `${founderDeaths} were`} of the original founding band.`
+      : "";
     state.log.unshift({
       year,
-      text: `Famine strikes. ${parts.join(" and ")} lost to starvation.`,
+      text: `Famine strikes. ${parts.join(" and ")} lost to starvation.${founderNote}`,
       tone: "bad",
     });
   }
@@ -273,12 +311,13 @@ export function endYear(state: GameState): void {
   ) {
     state.pops.push(makeBabyPop());
     applyMorale(state, 2);
-    state.log.unshift({
-      year,
-      text: "A child is born into the settlement. They will not work for some years yet.",
-      tone: "good",
-    });
+    tally.births += 1;
   }
+
+  // Combined population tally — one chronicle line for the quiet turning of
+  //   the year (elders, coming-of-age, births). Famine/bandit deaths remain on
+  //   their own lines so they stay narratively distinct.
+  emitPopulationTally(state, year, tally);
 
   // 8. Game-over check and year advance.
   if (totalPop(state) <= 0) {
@@ -293,6 +332,43 @@ export function endYear(state: GameState): void {
   }
 
   if (state.log.length > 120) state.log.length = 120;
+}
+
+interface PopTally {
+  oldAgeDeaths: number;
+  founderOldAgeDeaths: number;
+  comingOfAge: number;
+  births: number;
+}
+
+function emitPopulationTally(state: GameState, year: number, t: PopTally): void {
+  if (t.oldAgeDeaths === 0 && t.comingOfAge === 0 && t.births === 0) return;
+  const parts: string[] = [];
+  if (t.births > 0) {
+    parts.push(`${t.births} birth${t.births === 1 ? "" : "s"}`);
+  }
+  if (t.comingOfAge > 0) {
+    parts.push(`${t.comingOfAge} come${t.comingOfAge === 1 ? "s" : ""} of age`);
+  }
+  if (t.oldAgeDeaths > 0) {
+    const founderNote = t.founderOldAgeDeaths > 0
+      ? ` (${t.founderOldAgeDeaths} of the founders)`
+      : "";
+    parts.push(
+      `${t.oldAgeDeaths} elder${t.oldAgeDeaths === 1 ? "" : "s"} pass${t.oldAgeDeaths === 1 ? "es" : ""}${founderNote}`,
+    );
+  }
+  // Tone leans "good" if a birth dominates, "neutral" if mixed, and "bad" only
+  //   when a founder passes (the chronicle should note the loss).
+  const tone: "good" | "bad" | "neutral" =
+    t.founderOldAgeDeaths > 0 ? "bad"
+    : t.births > 0 && t.oldAgeDeaths === 0 ? "good"
+    : "neutral";
+  state.log.unshift({
+    year,
+    text: `The year turns — ${parts.join(", ")}.`,
+    tone,
+  });
 }
 
 // Shed workers until assigned total ≤ adult count. Scouts first (most flexible),
@@ -365,41 +441,43 @@ export function currentJobCount(state: GameState, job: Job): number {
   return currentWorkers(state, job);
 }
 
-export function canExecuteTrade(
-  state: GameState,
-  action: TradeAction,
-  resource: TradeResource,
-  qty: number,
-): boolean {
-  if (qty <= 0 || qty > TRADE_MAX_PER_VISIT) return false;
-  const rate = TRADE_RATES[action][resource];
-  if (action === "sell") return state[resource] >= qty;
-  return state.gold >= qty * rate;
+export function canExecuteTradeBasket(state: GameState, basket: TradeBasket): boolean {
+  const total = basketTotal(basket);
+  if (total <= 0 || total > TRADE_MAX_PER_VISIT) return false;
+  const resources: TradeResource[] = ["food", "wood", "stone"];
+  for (const r of resources) {
+    if (basket.sell[r] < 0 || basket.buy[r] < 0) return false;
+    // Must have enough of each resource to sell.
+    if (basket.sell[r] > state[r]) return false;
+  }
+  // Net gold delta must leave gold non-negative.
+  const delta = basketGoldDelta(basket);
+  if (state.gold + delta < 0) return false;
+  return true;
 }
 
-export function executeTrade(
-  state: GameState,
-  action: TradeAction,
-  resource: TradeResource,
-  qty: number,
-): LogEntry {
-  const rate = TRADE_RATES[action][resource];
-  const goldDelta = qty * rate;
-  if (action === "sell") {
-    state[resource] -= qty;
-    state.gold += goldDelta;
-  } else {
-    state.gold -= goldDelta;
-    state[resource] += qty;
+export function executeTradeBasket(state: GameState, basket: TradeBasket): LogEntry {
+  const resources: TradeResource[] = ["food", "wood", "stone"];
+  for (const r of resources) {
+    state[r] += basket.buy[r] - basket.sell[r];
   }
+  const delta = basketGoldDelta(basket);
+  state.gold += delta;
   state.pendingMerchant = false;
-  const verb = action === "sell" ? "sell" : "buy";
-  const goldSign = action === "sell" ? `+${goldDelta}` : `-${goldDelta}`;
-  const resSign = action === "sell" ? `-${qty}` : `+${qty}`;
+
+  // Build a compact summary: "sold 3 wood, bought 2 stone, +X gold".
+  const parts: string[] = [];
+  for (const r of resources) {
+    if (basket.sell[r] > 0) parts.push(`sold ${basket.sell[r]} ${r}`);
+  }
+  for (const r of resources) {
+    if (basket.buy[r] > 0) parts.push(`bought ${basket.buy[r]} ${r}`);
+  }
+  const goldSign = delta >= 0 ? `+${delta}` : `${delta}`;
   return {
     year: state.year,
-    text: `You ${verb} ${qty} ${resource} to the merchants. (${resSign} ${resource}, ${goldSign} gold)`,
-    tone: action === "sell" ? "good" : "neutral",
+    text: `You strike a deal with the merchants: ${parts.join(", ")}. (${goldSign} gold)`,
+    tone: delta >= 0 ? "good" : "neutral",
   };
 }
 
@@ -507,12 +585,28 @@ export function dispatchBoat(state: GameState): void {
   reconcileAllocation(state);
 }
 
+// How much fishing experience reduces per-crew loss odds. Scales slowly: after
+//   FISHING_XP_GATE fisher-years the first 1% kicks in, then a further 1% per
+//   FISHING_XP_PER_STEP more years, capped so the effective chance can't drop
+//   below FISHING_LOSS_MIN.
+export function fishingLossReduction(years: number): number {
+  if (years < FISHING_XP_GATE) return 0;
+  const steps = 1 + Math.floor((years - FISHING_XP_GATE) / FISHING_XP_PER_STEP);
+  const maxReduction = BOAT_CREW_LOSS_CHANCE - FISHING_LOSS_MIN;
+  return Math.min(maxReduction, steps * 0.01);
+}
+
+export function effectiveCrewLossChance(state: GameState): number {
+  return Math.max(FISHING_LOSS_MIN, BOAT_CREW_LOSS_CHANCE - fishingLossReduction(state.fishingYears));
+}
+
 function resolveVoyage(state: GameState): void {
   const year = state.year;
   let lostAtSea = 0;
   const survivors: Pop[] = [];
+  const lossChance = effectiveCrewLossChance(state);
   for (const p of state.boat.crew) {
-    if (Math.random() < BOAT_CREW_LOSS_CHANCE) {
+    if (Math.random() < lossChance) {
       lostAtSea += 1;
     } else {
       survivors.push(p);
@@ -554,5 +648,9 @@ function resolveVoyage(state: GameState): void {
   }
   state.log.unshift({ year, text, tone });
 
-  state.boat = { status: "docked", returnYear: null, crew: [] };
+  // If all crew died, the ship is lost — no further voyages possible. Otherwise
+  //   she returns to her mooring and can sail again.
+  state.boat = survivors.length === 0
+    ? { status: "lost", returnYear: null, crew: [] }
+    : { status: "docked", returnYear: null, crew: [] };
 }

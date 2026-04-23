@@ -39,12 +39,12 @@ export function makeStarterPop(): Pop {
   // Floor remaining life so the whole cohort can't die before the first baby
   // matures — bad luck shouldn't kill the settlement before it has a chance.
   const lifespan = Math.max(age + 6, randInt(LIFESPAN_RANGE[0], LIFESPAN_RANGE[1]));
-  return { age, lifespan };
+  return { age, lifespan, founder: true };
 }
 
 export function makeStarterChild(): Pop {
   const age = randInt(0, 2);
-  return { age, lifespan: randInt(LIFESPAN_RANGE[0], LIFESPAN_RANGE[1]) };
+  return { age, lifespan: randInt(LIFESPAN_RANGE[0], LIFESPAN_RANGE[1]), founder: true };
 }
 
 export function makeBabyPop(): Pop {
@@ -124,6 +124,7 @@ export function newGame(departure: DepartureChoices): GameState {
     ],
     gameOver: false,
     selectedTile: null,
+    fishingYears: 0,
   };
 
   placeStarterWorker(state, "hunter");

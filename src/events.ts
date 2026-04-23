@@ -1,4 +1,4 @@
-import { exploreFrontier } from "./map";
+import { exploreFrontier, hasUndiscoveredFrontier } from "./map";
 import { applyMorale, makeNewcomerPop } from "./state";
 import {
   ALARM_RESPONSES,
@@ -8,6 +8,7 @@ import {
   GameState,
   LogEntry,
   MORALE_ATTRACT_THRESHOLD,
+  MORALE_FOUNDER_EXTRA,
   MORALE_PREY_THRESHOLD,
   SCRIPTED_WAVE_REFUGEES,
   ScriptedWaveId,
@@ -23,16 +24,15 @@ interface EventDef {
 }
 
 // Remove one pop, preferring adults (they die defending) or children (they starve).
-// Returns the number actually removed.
-function removePops(state: GameState, count: number, prefer: "adult" | "child"): number {
+// Returns the removed pops so callers can inspect flags (e.g. founder status).
+function removePops(state: GameState, count: number, prefer: "adult" | "child"): import("./types").Pop[] {
   const pops = state.pops;
   pops.sort((a, b) => {
     if (prefer === "child") return a.age - b.age; // youngest first
     return b.age - a.age; // oldest first
   });
   const actual = Math.min(count, pops.length);
-  pops.splice(0, actual);
-  return actual;
+  return pops.splice(0, actual);
 }
 
 const EVENTS: EventDef[] = [
@@ -93,17 +93,22 @@ const EVENTS: EventDef[] = [
     id: "bandits",
     weight: 7,
     blockedBy: "palisade",
-    blockedText: "Bandits from the highlands test the new palisade and withdraw empty-handed. (Averted)",
+    blockedText: "Bandits from the highlands test the palisade and withdraw empty-handed. (Averted)",
     apply: (s) => {
       const goldLost = Math.min(5, s.gold);
       s.gold -= goldLost;
       const adults = s.pops.filter((p) => p.age >= 4).length;
-      const popLost = adults > 2 ? removePops(s, 1, "adult") : 0;
-      applyMorale(s, popLost > 0 ? -7 : -2);
+      const lost = adults > 2 ? removePops(s, 1, "adult") : [];
+      const founderLost = lost.filter((p) => p.founder).length;
+      const moraleLost = lost.length > 0
+        ? -(7 + founderLost * MORALE_FOUNDER_EXTRA)
+        : -2;
+      applyMorale(s, moraleLost);
+      const founderNote = founderLost > 0 ? " One of the founders is among the dead." : "";
       return {
         year: s.year,
-        text: popLost > 0
-          ? `Bandits from the highlands raid the settlement. A defender falls. (-${goldLost} gold, -${popLost} adult)`
+        text: lost.length > 0
+          ? `Bandits from the highlands raid the settlement. A defender falls.${founderNote} (-${goldLost} gold, -${lost.length} adult)`
           : `Bandits circle but find little. (-${goldLost} gold)`,
         tone: "bad",
       };
@@ -115,9 +120,12 @@ const EVENTS: EventDef[] = [
     apply: (s) => {
       s.stone += 10;
       const revealed = exploreFrontier(s.tiles, 3);
+      const revealNote = revealed > 0
+        ? `, ${revealed} tile${revealed === 1 ? "" : "s"} revealed`
+        : "";
       return {
         year: s.year,
-        text: `Scouts stumble on ancient ruins. Worked stone lies everywhere. (+10 stone, ${revealed} tiles revealed)`,
+        text: `Scouts stumble on ancient ruins. Worked stone lies everywhere. (+10 stone${revealNote})`,
         tone: "good",
       };
     },
@@ -210,6 +218,14 @@ function isPursued(state: GameState): boolean {
 }
 
 function adjustedWeight(ev: EventDef, state: GameState): number {
+  if (ev.id === "ruins") {
+    // Ruins is a scout-flavoured find. If nobody's out surveying, or the map is
+    //   already fully known, it shouldn't fire — the event text and reveal are
+    //   both wasted.
+    if (state.scouts <= 0) return 0;
+    if (!hasUndiscoveredFrontier(state.tiles)) return 0;
+    return ev.weight;
+  }
   if (ev.id === "newcomers") {
     let mult = 1;
     if (state.morale >= MORALE_ATTRACT_THRESHOLD) mult++;

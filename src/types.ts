@@ -1,3 +1,6 @@
+export const VERSION = "v0.4.4";
+export const AUTHOR = "Vicente Muñoz";
+
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
 
 export type Job = "farmer" | "woodcutter" | "quarryman" | "hunter" | "fisher" | "scout";
@@ -57,13 +60,14 @@ export interface LogEntry {
 export interface Pop {
   age: number;
   lifespan: number;
+  founder?: boolean;
 }
 
 // The rescue boat. The settlers arrived in it; now it can be dispatched to
 // comb the region for other refugees of the same war. While at sea, the crew
 // is held here (not in state.pops) so they don't consume food at home.
 export interface Boat {
-  status: "docked" | "voyage" | "scrapped";  // scrapped = ship fate burned/salvaged
+  status: "docked" | "voyage" | "scrapped" | "lost";  // scrapped = ship fate burned/salvaged; lost = all crew died at sea
   returnYear: number | null;  // end-of-year on which the voyage resolves
   crew: Pop[];                // 2 adults if on voyage; empty when docked
 }
@@ -296,6 +300,10 @@ export interface GameState {
   log: LogEntry[];
   gameOver: boolean;
   selectedTile: { x: number; y: number } | null;
+  // Cumulative fisher-years. Incremented by current fisher count each turn (step
+  //   1). Converts into a crew-loss reduction for ship voyages — see
+  //   fishingLossReduction in turn.ts. Maritime experience builds slowly.
+  fishingYears: number;
 }
 
 export const MAP_W = 20;
@@ -349,6 +357,11 @@ export const BOAT_VOYAGE_YEARS: number = 2;
 export const BOAT_REFUGEE_WEIGHTS: [number, number, number, number] = [2, 4, 3, 1];
 // Per-crew chance of being lost at sea (rough seas, bandit galleys, bad luck).
 export const BOAT_CREW_LOSS_CHANCE = 0.1;
+// Fishing experience bonus — reduces BOAT_CREW_LOSS_CHANCE per voyage. The
+//   settlement's maritime literacy grows as fishers work the shore.
+export const FISHING_XP_GATE = 2;          // minimum fisher-years before any bonus
+export const FISHING_XP_PER_STEP = 3;      // fisher-years required per additional 1% reduction
+export const FISHING_LOSS_MIN = 0.03;      // floor on effective crew loss chance (can never be lower)
 
 // Random capacity ranges when generating the island. Beach/river are narrow
 // working bands — one or two fishers per tile.
@@ -395,6 +408,32 @@ export const TRADE_RATES: Record<TradeAction, Record<TradeResource, number>> = {
 };
 export const TRADE_MAX_PER_VISIT = 5;
 
+// A merchant visit's order sheet. The player can mix buys and sells in the same
+//   visit, bounded by a combined unit cap (TRADE_MAX_PER_VISIT).
+export type TradeBasket = Record<TradeAction, Record<TradeResource, number>>;
+
+export function emptyBasket(): TradeBasket {
+  return { sell: { food: 0, wood: 0, stone: 0 }, buy: { food: 0, wood: 0, stone: 0 } };
+}
+
+export function basketTotal(basket: TradeBasket): number {
+  return (
+    basket.sell.food + basket.sell.wood + basket.sell.stone
+    + basket.buy.food + basket.buy.wood + basket.buy.stone
+  );
+}
+
+// Positive = settlement gains gold; negative = settlement spends gold.
+export function basketGoldDelta(basket: TradeBasket): number {
+  let delta = 0;
+  const resources: TradeResource[] = ["food", "wood", "stone"];
+  for (const r of resources) {
+    delta += basket.sell[r] * TRADE_RATES.sell[r];
+    delta -= basket.buy[r]  * TRADE_RATES.buy[r];
+  }
+  return delta;
+}
+
 // Morale — a 0–100 settlement-wide stat. Lagging indicator (no passive drift):
 // reflects how the year went, not an always-leaking bucket. Gates growth and
 // biases event rolls.
@@ -404,6 +443,8 @@ export const MORALE_START = 80;
 export const MORALE_GROWTH_GATE = 50;       // births only fire at or above this
 export const MORALE_ATTRACT_THRESHOLD = 80; // at/above, newcomers event weight ×2
 export const MORALE_PREY_THRESHOLD = 30;    // at/below, bandits event weight ×2
+export const MORALE_OLD_AGE_DEATH = 2;      // per elder passing of old age
+export const MORALE_FOUNDER_EXTRA = 3;      // extra penalty per founder death (stacks with base)
 
 // One-time-purchase settlement upgrades. Each blocks a specific negative event
 // (see events.ts: blockedBy + blockedText). No durability; no multiples.
@@ -440,4 +481,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v17";
+export const SAVE_KEY = "isle-of-cambrera-save-v18";

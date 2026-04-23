@@ -6,9 +6,27 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## Status
 
-**v0.4 — Long House and Roads.** The settlement now has a civic milestone: once you reach 25 people, you can raise a **Long House** — a hall where the community gathers to govern itself. It raises morale, draws more survivors to Cambrera (word travels), and unlocks road construction. **Roads** are the first tile-targeted build action: click any in-reach tile, pay 2 wood + 5 stone, and lay a path. Road tiles extend your reach outward just like worked tiles do, letting you push your frontier without stationing a worker. The Long House also paves the town square automatically — the hall and the first road are the same civic moment.
+**v0.4.4 — Trade basket and maritime lore.** Merchants now accept a combined basket of buys *and* sells in the same visit — three resources, independent sell/buy steppers per row, capped at 5 units total across the whole basket. Fishers quietly earn the settlement **maritime experience**: each turn adds to a running fisher-years count, which reduces the crew-loss chance on rescue-ship voyages (caps at −7% off the base 10%, floor 3%). The ship panel now shows the current survival odds and the bonus the fishers have earned. Plus the v0.4.3 fixes and polish below.
 
-The island's walking range is now grounded in its actual scale: each tile is ~10 hectares (~316 m across), so unassisted reach from the town centre drops from 3 to **2 tiles** (~630 m). Everything beyond that needs roads — or the boat.
+### In v0.4.4
+- **Fishing XP → safer voyages.** `state.fishingYears` accumulates the number of assigned fishers each turn. Past a 2-year gate, every 3 additional fisher-years drops voyage crew-loss by 1%, capped at 7% (so a steady fishing presence takes a voyage from 10% → 3% crew-loss over ~20 years).
+- **Ship panel tells you the odds.** The panel now shows current crew-loss chance and, once fishers have built any experience, the bonus they've contributed.
+- **Trade basket.** The merchant modal is a basket: three rows (food/wood/stone), each with independent sell and buy steppers. Global cap of 5 units across all six steppers. Net gold preview + resource "after" column so you see the outcome before confirming.
+- **Save key bumped to `v18`** — `fishingYears` is a new required field.
+
+**v0.4.3 — Bugfix and polish pass.** A round of playtest fixes: the ruins event no longer fires when the player has no scouts (and skips when the map is fully charted); a ship that loses all crew is now correctly marked **lost at sea** and cannot sail again; the palisade bandit log no longer greets the palisade as newly-built every time; and scouts stand down automatically once there is nothing left to chart. The chronicle groups entries by year under a **Year N** header, and the year's quiet turnings (elders passing, children coming of age, new births) are folded into a single tally line instead of three separate entries. Deaths now hit morale harder — especially when one of the original founders passes. The intro papyrus gains a pronunciation hint: *Cambrera — cam-BREH-rah*. The topbar shows the build version and a byline crediting Vicente Muñoz; the intro adds a small collaborator note for Claude Code.
+
+### In v0.4.3
+- **Bug: ruins no scouts.** The `ruins` random event previously rolled even with 0 scouts assigned. Weight is now 0 when no scouts are out, or when the map has no undiscovered frontier remaining.
+- **Bug: lost ship re-dispatchable.** `Boat.status` gains a `"lost"` state. When a voyage loses all crew, the ship is marked lost rather than returning to `docked`. The ship panel shows a final "lost at sea" notice and the Dispatch button is gone.
+- **Bug: palisade bandit log.** The averted-bandits text no longer calls the palisade "new" each time.
+- **Bug: scouts working a fully-charted map.** `hasUndiscoveredFrontier` is the new gate; the +Scout button disables when no frontier remains, and any active scouts automatically return home on the turn the last tile is revealed, with a chronicle line explaining the stand-down.
+- **Polish: chronicle year separator.** Log entries are grouped under a centred "— Year N —" header with a rule between years.
+- **Polish: single pop tally per year.** Elder deaths, children coming of age, and births now share a single "The year turns — …" line. Famine and bandit deaths remain on their own lines (event-flavoured).
+- **Polish: founder morale weight.** Pops carry a `founder?: boolean` flag — set on the 5 starter adults and 2 starter children. Any founder death applies an extra −3 morale on top of the base penalty (−2 for old age, −5 for famine, −7 for bandits). Elder passings also bump from −1 to −2 base.
+- **Polish: version + credits.** Topbar shows `v0.4.3 · by Vicente Muñoz`; intro papyrus carries a credits block naming Vicente as author and Claude Code as coding collaborator.
+- **Polish: pronunciation.** "Cambrera" in the intro is followed by `(cam-BREH-rah)`.
+- Save key **not** bumped — `Pop.founder` is optional (old saves load with no founders marked) and `Boat.status = "lost"` is only reached via new voyages. Old saves with the lost-ship bug will still allow dispatch until a new game is started.
 
 ### In v0.4
 - **Long House building.** Gated at 25 pops (total, including children). Cost: 20 wood + 15 stone. Grants +8 morale on construction; permanently boosts newcomers event weight (×3 when both Long House and high morale are active). Town tile gets a road automatically.

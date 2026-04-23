@@ -1,0 +1,43 @@
+name: Feature request
+description: A new mechanic, building, event, or system to consider.
+labels: ["feature"]
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The idea
+      description: What you want, in one or two sentences.
+      placeholder: |
+        Add a market building that improves merchant trade rates by 1 gold per unit.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What problem this solves or what it adds to the experience. (Helps judge scope.)
+      placeholder: |
+        Gold piles up mid-game with nothing good to spend it on; the market gives stone hoarding a cheaper alternative.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints worth keeping in mind
+      description: References to existing mechanics or design intents this should respect.
+      placeholder: |
+        Shouldn't trivialize the TRADE_MAX_PER_VISIT cap. Should still require wood/stone to build.
+    validations:
+      required: false
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Which stage of the game does this belong to?
+      description: Early (resources/exploration), mid (combat), or late (diplomacy). Helps us sequence the roadmap.
+      options:
+        - Early
+        - Mid
+        - Late
+        - Any / not sure
+    validations:
+      required: false

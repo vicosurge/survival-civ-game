@@ -1,4 +1,4 @@
-import { findEligibleTile, findWorkerToRemove, isInReach, totalReachableCapacity } from "./map";
+import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReach, totalReachableCapacity } from "./map";
 import { adultCount, childCount, idleCount, jobCount, projectedYields, totalPop } from "./state";
 import {
   assignWorker,
@@ -7,15 +7,18 @@ import {
   canBuild,
   canBuildRoad,
   canDispatchBoat,
-  canExecuteTrade,
+  canExecuteTradeBasket,
   declineTrade,
   dispatchBoat,
-  executeTrade,
+  effectiveCrewLossChance,
+  executeTradeBasket,
+  fishingLossReduction,
   unassignWorker,
 } from "./turn";
 import {
   ALARM_RESPONSES,
   AlarmResponseId,
+  AUTHOR,
   BOAT_CREW_SIZE,
   BUILDINGS,
   BuildingDef,
@@ -43,8 +46,12 @@ import {
   TILE_SIZE,
   TRADE_MAX_PER_VISIT,
   TRADE_RATES,
-  TradeAction,
+  TradeBasket,
   TradeResource,
+  VERSION,
+  basketGoldDelta,
+  basketTotal,
+  emptyBasket,
 } from "./types";
 
 export interface UIHandlers {
@@ -63,7 +70,16 @@ export function initUI(handlers: UIHandlers): void {
   document.getElementById("new-game-btn")!.addEventListener("click", () => {
     if (confirm("Abandon this settlement and start a new game?")) handlers.onNewGame();
   });
+  renderStaticCredits();
   initIntroHandlers();
+}
+
+function renderStaticCredits(): void {
+  document.getElementById("version-chip")!.textContent = VERSION;
+  document.getElementById("author-chip")!.textContent = `by ${AUTHOR}`;
+  document.getElementById("intro-author")!.textContent = AUTHOR;
+  document.getElementById("intro-version")!.textContent = `Version ${VERSION}`;
+  document.title = `Isle of Cambrera ${VERSION} — A Settler's Chronicle`;
 }
 
 function initIntroHandlers(): void {
@@ -252,32 +268,36 @@ function showTradeModal(state: GameState, onResolve: () => void): void {
   overlay.classList.remove("hidden");
   overlay.setAttribute("aria-hidden", "false");
 
-  let action: TradeAction = "sell";
-  let resource: TradeResource = "food";
-  let qty = 1;
+  const basket: TradeBasket = emptyBasket();
+
+  const bump = (kind: "sell" | "buy", res: TradeResource, delta: number): void => {
+    const next = basket[kind][res] + delta;
+    if (next < 0) return;
+    // Enforce the combined cap — delta-positive moves fail at the max.
+    if (delta > 0 && basketTotal(basket) >= TRADE_MAX_PER_VISIT) return;
+    // Can't schedule to sell more than we have.
+    if (kind === "sell" && next > state[res]) return;
+    basket[kind][res] = next;
+    rerender();
+  };
 
   const rerender = (): void => {
-    overlay.innerHTML = buildTradeHTML(state, action, resource, qty);
+    overlay.innerHTML = buildTradeHTML(state, basket);
     bind();
   };
 
   const bind = (): void => {
-    overlay.querySelectorAll<HTMLLabelElement>(".trade-opt").forEach((label) => {
-      label.addEventListener("click", () => {
-        const a = label.dataset.action as TradeAction;
-        const r = label.dataset.resource as TradeResource;
-        action = a;
-        resource = r;
-        rerender();
+    overlay.querySelectorAll<HTMLButtonElement>(".basket-step").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const kind = btn.dataset.kind as "sell" | "buy";
+        const res = btn.dataset.res as TradeResource;
+        const dir = btn.dataset.dir === "+" ? 1 : -1;
+        bump(kind, res, dir);
       });
     });
-    overlay.querySelector<HTMLButtonElement>(".qty-minus")!
-      .addEventListener("click", () => { if (qty > 1) { qty -= 1; rerender(); } });
-    overlay.querySelector<HTMLButtonElement>(".qty-plus")!
-      .addEventListener("click", () => { if (qty < TRADE_MAX_PER_VISIT) { qty += 1; rerender(); } });
     overlay.querySelector<HTMLButtonElement>(".trade-confirm")!.addEventListener("click", () => {
-      if (!canExecuteTrade(state, action, resource, qty)) return;
-      state.log.unshift(executeTrade(state, action, resource, qty));
+      if (!canExecuteTradeBasket(state, basket)) return;
+      state.log.unshift(executeTradeBasket(state, basket));
       hideTradeModal();
       onResolve();
     });
@@ -291,57 +311,83 @@ function showTradeModal(state: GameState, onResolve: () => void): void {
   rerender();
 }
 
-function buildTradeHTML(state: GameState, action: TradeAction, resource: TradeResource, qty: number): string {
-  const rate = TRADE_RATES[action][resource];
-  const goldDelta = qty * rate;
-  const valid = canExecuteTrade(state, action, resource, qty);
-  const previewClass = valid ? "trade-preview" : "trade-preview invalid";
-  const preview = action === "sell"
-    ? `You give <strong>${qty} ${resource}</strong>, receive <strong>${goldDelta} gold</strong>.`
-    : `You spend <strong>${goldDelta} gold</strong>, receive <strong>${qty} ${resource}</strong>.`;
-  const invalidNote = !valid
-    ? action === "sell"
-      ? ` <em>(not enough ${resource})</em>`
-      : ` <em>(not enough gold)</em>`
-    : "";
+function buildTradeHTML(state: GameState, basket: TradeBasket): string {
+  const total = basketTotal(basket);
+  const delta = basketGoldDelta(basket);
+  const valid = total > 0 && canExecuteTradeBasket(state, basket);
 
-  const opt = (a: TradeAction, r: TradeResource): string => {
-    const selected = a === action && r === resource ? " selected" : "";
-    const verb = a === "sell" ? "Sell" : "Buy";
-    const resLabel = r.charAt(0).toUpperCase() + r.slice(1);
-    const price = TRADE_RATES[a][r];
-    return `<label class="trade-opt${selected}" data-action="${a}" data-resource="${r}">
-      <input type="radio" name="trade" ${selected ? "checked" : ""} />
-      ${verb} ${resLabel} <span style="color:#6b3f0f;font-size:0.8rem;">(${price}g)</span>
-    </label>`;
-  };
+  const resources: TradeResource[] = ["food", "wood", "stone"];
+  const rows = resources.map((r) => basketRow(state, basket, r, total)).join("");
+
+  const goldAfter = state.gold + delta;
+  const goldClass = delta >= 0 ? "gold-pos" : "gold-neg";
+  const goldSign = delta >= 0 ? `+${delta}` : `${delta}`;
+
+  let status = "Pick any combination of buys and sells, then strike the deal.";
+  if (total === 0) status = "Pick any combination of buys and sells, then strike the deal.";
+  else if (goldAfter < 0) status = `Not enough gold — would leave you at ${goldAfter}.`;
+  else status = `${total} / ${TRADE_MAX_PER_VISIT} units in the basket.`;
 
   return `
     <div id="trade-panel" role="dialog" aria-label="Merchant trade">
       <h2>✦ Travelling Merchants ✦</h2>
-      <p class="trade-flavor">They've laid out their wares at the edge of the clearing. One trade is on offer before they move on.</p>
+      <p class="trade-flavor">They've laid out their wares at the edge of the clearing. One basket of trades is on offer before they move on — up to ${TRADE_MAX_PER_VISIT} units in any mix.</p>
       <div class="trade-onhand">
         On hand: <strong>${state.gold}</strong> gold, <strong>${state.food}</strong> food, <strong>${state.wood}</strong> wood, <strong>${state.stone}</strong> stone
       </div>
-      <div class="trade-options">
-        ${opt("sell", "food")}
-        ${opt("buy", "food")}
-        ${opt("sell", "wood")}
-        ${opt("buy", "wood")}
-        ${opt("sell", "stone")}
-        ${opt("buy", "stone")}
+      <div class="basket-grid">
+        <div class="basket-head">
+          <span></span><span>Sell</span><span>Buy</span><span class="align-right">After</span>
+        </div>
+        ${rows}
       </div>
-      <div class="trade-qty">
-        <button class="qty-minus" ${qty <= 1 ? "disabled" : ""}>−</button>
-        <span class="qty-value">${qty}</span>
-        <button class="qty-plus" ${qty >= TRADE_MAX_PER_VISIT ? "disabled" : ""}>+</button>
-        <span style="color:#6b3f0f;font-size:0.8rem;margin-left:0.5rem;">(max ${TRADE_MAX_PER_VISIT})</span>
+      <div class="trade-totals">
+        <span>${status}</span>
+        <span>Net gold: <strong class="${goldClass}">${goldSign}</strong> → <strong>${goldAfter}</strong></span>
       </div>
-      <div class="${previewClass}">${preview}${invalidNote}</div>
       <div class="trade-buttons">
         <button class="trade-confirm" ${valid ? "" : "disabled"}>Trade</button>
         <button class="trade-decline">Decline</button>
       </div>
+    </div>
+  `;
+}
+
+function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, total: number): string {
+  const held = state[r];
+  const sellQty = basket.sell[r];
+  const buyQty = basket.buy[r];
+  const after = held - sellQty + buyQty;
+  const sellRate = TRADE_RATES.sell[r];
+  const buyRate = TRADE_RATES.buy[r];
+  const atCap = total >= TRADE_MAX_PER_VISIT;
+
+  // +Sell disabled when capped OR player has nothing left to sell of this resource.
+  const sellPlusDisabled = atCap || sellQty >= held;
+  // +Buy disabled when capped OR the additional cost would exceed current gold
+  //   (after accounting for whatever gold the basket already reserves/credits).
+  const currentDelta = basketGoldDelta(basket);
+  const nextBuyCost = buyRate;
+  const goldAfterNextBuy = state.gold + currentDelta - nextBuyCost;
+  const buyPlusDisabled = atCap || goldAfterNextBuy < 0;
+
+  const stepper = (kind: "sell" | "buy", qty: number, plusDisabled: boolean): string => `
+    <div class="basket-stepper">
+      <button class="basket-step" data-kind="${kind}" data-res="${r}" data-dir="-" ${qty === 0 ? "disabled" : ""}>−</button>
+      <span class="basket-qty">${qty}</span>
+      <button class="basket-step" data-kind="${kind}" data-res="${r}" data-dir="+" ${plusDisabled ? "disabled" : ""}>+</button>
+    </div>
+  `;
+
+  return `
+    <div class="basket-row">
+      <span class="basket-res">
+        <strong>${r.charAt(0).toUpperCase()}${r.slice(1)}</strong>
+        <span class="rate-hint">sell ${sellRate}g · buy ${buyRate}g</span>
+      </span>
+      ${stepper("sell", sellQty, sellPlusDisabled)}
+      ${stepper("buy",  buyQty,  buyPlusDisabled)}
+      <span class="basket-after align-right">${held}<span class="muted"> → </span><strong>${after}</strong></span>
     </div>
   `;
 }
@@ -440,13 +486,16 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
 
   const plus = document.createElement("button");
   plus.textContent = "+";
-  const canAddScout = job === "scout" && idleCount(state) > 0;
+  const frontierExists = hasUndiscoveredFrontier(state.tiles);
+  const canAddScout = job === "scout" && idleCount(state) > 0 && frontierExists;
   let canAddProd = false;
   if (job !== "scout") {
     canAddProd = idleCount(state) > 0 && findEligibleTile(state, job) !== null;
   }
   plus.disabled = state.gameOver || !(canAddScout || canAddProd);
-  if (job !== "scout" && idleCount(state) > 0 && !canAddProd) {
+  if (job === "scout" && !frontierExists) {
+    plus.title = "The island is fully charted — no more land to explore.";
+  } else if (job !== "scout" && idleCount(state) > 0 && !canAddProd) {
     const terrainLabel: Record<Exclude<Job, "scout">, string> = {
       farmer: "grassland", woodcutter: "forest", hunter: "forest", quarryman: "stone",
       fisher: "shallows",
@@ -547,6 +596,14 @@ function renderShipPanel(state: GameState, onChange: () => void): void {
     return;
   }
 
+  if (state.boat.status === "lost") {
+    const status = document.createElement("div");
+    status.className = "ship-status";
+    status.innerHTML = `<strong>Lost at sea.</strong> The ship never returned from her last voyage. No further voyages possible.`;
+    panel.appendChild(status);
+    return;
+  }
+
   const status = document.createElement("div");
   status.className = "ship-status";
   if (state.boat.status === "docked") {
@@ -557,6 +614,20 @@ function renderShipPanel(state: GameState, onChange: () => void): void {
     status.innerHTML = `<strong>At sea.</strong> ${crewCount} crew aboard; returns in ${yearsLeft} year${yearsLeft === 1 ? "" : "s"}.`;
   }
   panel.appendChild(status);
+
+  // Fishing-experience hint. Show current per-crew loss chance and, when it
+  //   differs from the base, the bonus the settlement's fishers have earned.
+  const reduction = fishingLossReduction(state.fishingYears);
+  const lossPct = Math.round(effectiveCrewLossChance(state) * 100);
+  const fishHint = document.createElement("div");
+  fishHint.className = "ship-hint";
+  if (reduction > 0) {
+    const reducePct = Math.round(reduction * 100);
+    fishHint.innerHTML = `Coastal lore (<strong>${state.fishingYears}</strong> fisher-years) — ${reducePct}% safer voyages. Crew loss chance: <strong>${lossPct}%</strong>.`;
+  } else {
+    fishHint.innerHTML = `No coastal lore yet — crew loss chance <strong>${lossPct}%</strong> per sailor. Fishers build maritime experience over time.`;
+  }
+  panel.appendChild(fishHint);
 
   const btn = document.createElement("button");
   if (state.boat.status === "voyage") {
@@ -700,11 +771,27 @@ function stateLabel(t: Tile): string {
 function renderLog(state: GameState): void {
   const log = document.getElementById("log")!;
   log.innerHTML = "";
-  for (const entry of state.log) {
-    const div = document.createElement("div");
-    div.className = `log-entry ${entry.tone}`;
-    div.innerHTML = `<span class="year">Y${entry.year}</span> — ${escapeHTML(entry.text)}`;
-    log.appendChild(div);
+  // Log is newest-first. Bracket each year's entries in a `<div class="year-group">`
+  //   so the CSS gutter renders cleanly between years without us hand-tracking
+  //   which entry is first/last in the group.
+  let i = 0;
+  while (i < state.log.length) {
+    const year = state.log[i].year;
+    const group = document.createElement("div");
+    group.className = "year-group";
+    const header = document.createElement("div");
+    header.className = "year-header";
+    header.textContent = `— Year ${year} —`;
+    group.appendChild(header);
+    while (i < state.log.length && state.log[i].year === year) {
+      const entry = state.log[i];
+      const div = document.createElement("div");
+      div.className = `log-entry ${entry.tone}`;
+      div.innerHTML = escapeHTML(entry.text);
+      group.appendChild(div);
+      i++;
+    }
+    log.appendChild(group);
   }
 }
 

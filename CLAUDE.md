@@ -36,6 +36,57 @@ Requires Node ≥ 18.
 - localStorage for saves (single save slot, key `isle-of-cambrera-save-v13` as of v0.3.4 — bump on breaking state-shape changes)
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
+## Current mechanics (v0.4.4)
+
+### Trade basket + fishing lore (v0.4.4)
+
+Two playtest-driven features layered on top of the v0.4.3 bugfix pass.
+
+**Fishing builds maritime experience.** `state.fishingYears: number` accumulates the current fisher count each turn (in the yield-collection loop). The cumulative count reduces ship crew-loss odds on voyages:
+- `FISHING_XP_GATE = 2`: no bonus below this many fisher-years.
+- `FISHING_XP_PER_STEP = 3`: each additional 3 fisher-years past the gate adds another 1% reduction.
+- `FISHING_LOSS_MIN = 0.03`: absolute floor on effective crew loss chance, so no amount of fishing makes voyages guaranteed safe.
+- Base `BOAT_CREW_LOSS_CHANCE = 0.10`, so the bonus caps at −7% (2 yrs → 9%; 5 yrs → 8%; ... 20+ yrs → 3%).
+- `fishingLossReduction(years)` and `effectiveCrewLossChance(state)` in turn.ts are exported for the ship panel to surface the current bonus.
+
+Design intent: fishing was previously a variable-yield food source with no other strategic value. The bonus makes a steady fisher presence a maritime-literacy investment — without flipping fishing into the dominant food job (farmers still produce more reliably).
+
+**Trade basket.** The merchant modal now accepts a combined **basket** of buys and sells in the same visit. `TradeBasket = Record<TradeAction, Record<TradeResource, number>>` is declared in types.ts with helpers `emptyBasket`, `basketTotal`, `basketGoldDelta`. `canExecuteTradeBasket` and `executeTradeBasket` in turn.ts replace the old single-action functions.
+
+UI is three rows (food/wood/stone), each with independent sell and buy steppers. Global cap `TRADE_MAX_PER_VISIT = 5` applies to the *combined* unit count across all six steppers. `+Sell` disables when capped or when the player has none of that resource; `+Buy` disables when capped or when the current basket's net would leave gold negative. The confirm button disables unless the basket is non-empty and fully valid.
+
+Design intent: the per-visit cap stays the strategic constraint — merchants aren't an infinite-liquidity exploit. The basket just lets the player express a single two-sided swap ("sell 3 wood, buy 1 stone") instead of having to choose one.
+
+**SAVE_KEY bumped to `v18`** — `fishingYears: number` is required on GameState; v17 saves won't load.
+
+### Bugfix & polish pass (v0.4.3)
+
+A round of playtest fixes and chronicle polish; no new systems.
+
+**Bugs fixed:**
+- `ruins` random event gated on `state.scouts > 0` **and** `hasUndiscoveredFrontier(tiles)` — no more scouts-finding-ruins-without-scouts. Event text also drops the "0 tiles revealed" trailing clause when nothing was revealed.
+- `Boat.status` gains `"lost"`. `resolveVoyage` sets `status: "lost"` when every crew member dies at sea (previously went back to `"docked"`, letting the player dispatch again). UI ship panel shows a terminal "Lost at sea." notice.
+- Bandit averted log now reads "the palisade" — previously always said "the **new** palisade" even years after construction.
+- Scouts allocated when no frontier remains: `+Scout` is disabled via `hasUndiscoveredFrontier(state.tiles)`, and `turn.ts` auto-retires any active scouts on the turn the last tile is revealed with a chronicle line ("The island is fully mapped.").
+
+**Chronicle polish:**
+- Year grouping: `renderLog` brackets consecutive same-year entries in a `.year-group` with a `.year-header` ("— Year N —"). CSS gives each group its own bottom rule.
+- **Single population tally per turn.** Elder deaths, coming-of-age, and births all route through a `tally` object in `endYear` and emit one combined line via `emitPopulationTally`. Famine and bandit deaths remain separate — they're event-flavoured and deserve their own line.
+
+**Founder morale weighting:**
+- `Pop.founder?: boolean` set `true` by `makeStarterPop` / `makeStarterChild` only.
+- Any founder death applies an additional `MORALE_FOUNDER_EXTRA` (−3) on top of the base death penalty. Applied at three sites: old-age (turn.ts), famine (turn.ts), bandit raid (events.ts).
+- `MORALE_OLD_AGE_DEATH` bumped from 1 → 2. A non-founder elder passing is now a noticeable morale dip; a founder elder passing is −5.
+
+**Design intent to preserve:**
+- **Tally merges pop changes only.** Don't fold famine/bandit/event deaths into the tally — those belong to the event that caused them and want their own tonal emphasis. The tally is for the quiet turning of the year.
+- **Founder flag is starter-only.** Newcomers from events, refugees brought home by the boat, and babies born in-game are **not** founders. Founder morale weight is a one-generation premium that decays naturally as the original band ages out.
+- **Save key not bumped.** `Pop.founder` is optional; old saves load with no founders marked and degrade to pre-v0.4.3 morale behaviour (no extra founder penalty). `Boat.status = "lost"` is only reached by new voyages; old saves in the buggy docked-but-lost state keep the old behaviour until a new game.
+
+**UI-only additions (v0.4.3):**
+- `VERSION` and `AUTHOR` constants in `types.ts`; topbar shows `v0.4.3 · by Vicente Muñoz`; intro papyrus carries an author + Claude Code collaborator credit block.
+- Cambrera pronunciation hint `(cam-BREH-rah)` added inline in the intro.
+
 ## Current mechanics (v0.3.2)
 
 ### River + Fishers + Hunting Lodge (v0.3.2)
