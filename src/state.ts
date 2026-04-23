@@ -1,16 +1,24 @@
 import { buildIsland, currentWorkers, findEligibleTile } from "./map";
 import {
   ADULT_AGE,
+  ALARM_RESPONSES,
+  COMPANIONS,
+  DEPARTURE_TIMINGS,
+  DepartureChoices,
   FOOD_PER_ADULT,
   FOOD_PER_CHILD,
   GameState,
+  GRANARY_FARMER_BONUS,
   HUNTING_LODGE_HUNTER_BONUS,
   Job,
+  LANDING_SPOTS,
   LIFESPAN_RANGE,
   MORALE_MAX,
   MORALE_MIN,
   MORALE_START,
   NEWCOMER_AGE_RANGE,
+  ORIGINS,
+  SHIP_FATES,
   Pop,
   SAVE_KEY,
   SCRIPTED_WAVE_JITTER,
@@ -20,7 +28,6 @@ import {
   ScriptedWaveId,
   STARTER_AGE_RANGE,
   YIELD_PER_WORKER,
-  GRANARY_FARMER_BONUS,
 } from "./types";
 
 function randInt(lo: number, hi: number): number {
@@ -65,8 +72,26 @@ export function rollScriptedWaves(): ScriptedWave[] {
   return waves;
 }
 
-export function newGame(): GameState {
-  const { tiles, town } = buildIsland();
+export function newGame(departure: DepartureChoices): GameState {
+  const { tiles, town } = buildIsland(LANDING_SPOTS[departure.landingSpot].town);
+
+  // Sum resource bonuses from all six departure choices.
+  let food = 30, wood = 18, stone = 5, gold = 5;
+  const addBonus = (b: Partial<Record<string, number>>): void => {
+    food  += b["food"]  ?? 0;
+    wood  += b["wood"]  ?? 0;
+    stone += b["stone"] ?? 0;
+    gold  += b["gold"]  ?? 0;
+  };
+  addBonus(ORIGINS[departure.origin].startingBonus);
+  addBonus(COMPANIONS[departure.companion].startingBonus);
+  addBonus(DEPARTURE_TIMINGS[departure.timing].startingBonus);
+  addBonus(ALARM_RESPONSES[departure.alarm].startingBonus);
+  addBonus(SHIP_FATES[departure.shipFate].startingBonus);
+
+  const morale = MORALE_START + COMPANIONS[departure.companion].moraleDelta;
+  const boatScrapped = SHIP_FATES[departure.shipFate].scrapped;
+
   const starterPops: Pop[] = [
     ...Array.from({ length: 5 }, () => makeStarterPop()),
     makeStarterChild(),
@@ -75,22 +100,25 @@ export function newGame(): GameState {
   const state: GameState = {
     year: 1,
     pops: starterPops,
-    food: 30,
-    wood: 18,
-    stone: 5,
-    gold: 5,
-    morale: MORALE_START,
+    food,
+    wood,
+    stone,
+    gold,
+    morale,
     tiles,
     town,
     scouts: 1,
-    boat: { status: "docked", returnYear: null, crew: [] },
+    boat: boatScrapped
+      ? { status: "scrapped", returnYear: null, crew: [] }
+      : { status: "docked", returnYear: null, crew: [] },
     scriptedWaves: rollScriptedWaves(),
     pendingMerchant: false,
     buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, long_house: false },
+    departure,
     log: [
       {
         year: 1,
-        text: "A small band of refugees beaches on Cambrera's southern shore. Before ploughs turn soil, hunting parties take to the nearer woods — food, first and foremost.",
+        text: "A small band of refugees beaches on Cambrera's shore. Before ploughs turn soil, hunting parties take to the nearer woods — food, first and foremost.",
         tone: "neutral",
       },
     ],

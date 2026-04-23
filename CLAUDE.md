@@ -166,6 +166,42 @@ The **Long House** is a governance building gated behind **25 pops** (total, inc
 - **Future Frostpunk-style decisions** (who leads, what values Cambrera holds) should be triggered by the Long House as the civic anchor. Don't wire those decisions into the random events table — add a dedicated decision system in a future version.
 - **SAVE_KEY bumped to `v15`** — `road: boolean` added to every `Tile`; v14 saves won't load.
 
+### Starting origins + UX polish (v0.4.1)
+
+**Starting origins.** Three choices presented in a parchment overlay between the intro and the first turn. Stored as `state.origin: OriginId` so future event hooks can reference what the player brought. Bonuses apply additively on top of base starting resources in `newGame(origin)`:
+- **Seeds & Farming Tools** — +10 food
+- **Fishing Tackle & Rope** — +8 food, +4 wood
+- **Preserved Provisions** — +20 food
+
+The origin overlay is the architectural stub for the full departure-sequence milestone (companion picks, packing-under-pressure choices, landing spot selection). The data shape (`OriginDef.startingBonus`) is intentionally open-ended for future bonuses beyond resource deltas.
+
+**Tile info popup.** `#tile-popup` appears at the top-right corner of the map canvas when a tile is selected — `pointer-events: none` so clicks pass through. The sidebar tile section keeps the Build Road action button.
+
+**Building cost chips** now show full words (`30 food / 15 wood`) instead of single-letter abbreviations.
+
+**Intro era anchor.** Added a paragraph to the intro papyrus that names the tech level (iron axes, ploughshares, timber halls, stone keeps) and the fading-magic premise, so the genre is unambiguous on first read.
+
+**SAVE_KEY bumped to `v16`** — `origin: OriginId` added to `GameState`; v15 saves won't load.
+
+### Full departure wizard (v0.4.2)
+
+Six-step pre-game wizard. Narrative text is marked PLACEHOLDER in `ui.ts:WIZARD_NARRATIVES` — Vicente will replace those paragraphs. The mechanical layer is complete.
+
+| Step | Choices | Effect |
+|------|---------|--------|
+| 1 What did you bring? | seeds / fishing / provisions | Resource bonus |
+| 2 Who came with you? | craftsman (+6w +4s) / wisewoman (+2f +5 morale) / nobody (+5f) | — |
+| 3 Departure timing | prepared (+5w +3s) / hasty | Sets `pursuedRisk` if prepared |
+| 4 The alarm bells | grab (+7f) / cast off | Sets `pursuedRisk` if grab |
+| 5 The ship | keep / salvage (+12w, scrapped) / burn (+4w, scrapped, clears pursuit) | `Boat.status = "scrapped"` |
+| 6 Where do you land? | western_shore (6,6) / southern_cove (6,10) / northern_strand (7,3) | Dynamic town placement |
+
+**Bandit pursuit:** `isPursued(state)` in events.ts: true if `timing===prepared OR alarm===grab` AND `shipFate!==burn`. Doubles bandit weight for years 1–5. Burning the ship clears the trail narrative-mechanically.
+
+**Landing spots:** `buildIsland(landingPos)` now parameterized. `T` removed from ISLAND string (row 6, col 6 is now plain `g`). Each spot has distinct adjacency to resources.
+
+**SAVE_KEY bumped to `v17`** — `origin: OriginId` replaced by `departure: DepartureChoices`; `Boat.status` gains `"scrapped"`; v16 saves won't load.
+
 ### Roads (v0.4)
 
 Roads are the first **tile-targeted construction action**. Player clicks a tile → a "Build Road" button appears in the tile info panel. Roads cost **2 wood + 5 stone** per tile, are instant, and persist permanently.

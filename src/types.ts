@@ -63,7 +63,7 @@ export interface Pop {
 // comb the region for other refugees of the same war. While at sea, the crew
 // is held here (not in state.pops) so they don't consume food at home.
 export interface Boat {
-  status: "docked" | "voyage";
+  status: "docked" | "voyage" | "scrapped";  // scrapped = ship fate burned/salvaged
   returnYear: number | null;  // end-of-year on which the voyage resolves
   crew: Pop[];                // 2 adults if on voyage; empty when docked
 }
@@ -98,6 +98,185 @@ export interface BuildingDef {
   cost: { food?: number; wood?: number; stone?: number; gold?: number };
 }
 
+// Starting origin — chosen before the first turn, applies resource bonuses and
+// is stored on state for future event hooks (e.g. fishing origin → richer catches).
+// The companion and departure-sequence choices are a planned later milestone;
+// this type and the ORIGINS table are the architectural foundation for that work.
+export type OriginId = "seeds" | "fishing" | "provisions";
+
+export interface OriginDef {
+  id: OriginId;
+  name: string;
+  flavor: string;       // one sentence shown on the selection card
+  bonusText: string;    // mechanical summary shown under the flavor
+  startingBonus: Partial<Record<"food" | "wood" | "stone" | "gold", number>>;
+}
+
+export const ORIGINS: Record<OriginId, OriginDef> = {
+  seeds: {
+    id: "seeds",
+    name: "Seeds & Farming Tools",
+    flavor: "Drought has ruined our home, but perhaps the northern lands will be fertile.",
+    bonusText: "+10 food — a season's seed-stock and field tools.",
+    startingBonus: { food: 10 },
+  },
+  fishing: {
+    id: "fishing",
+    name: "Fishing Tackle & Rope",
+    flavor: "The soil may be dust, but the sea will provide what ground cannot.",
+    bonusText: "+8 food, +4 wood — nets, hooks, and cordage from the hull stores.",
+    startingBonus: { food: 8, wood: 4 },
+  },
+  provisions: {
+    id: "provisions",
+    name: "Preserved Provisions",
+    flavor: "All the food we could find, trade for, or steal — sealed against the voyage.",
+    bonusText: "+20 food — heavy clay jars and smoked stores. Starvation kills faster than cold.",
+    startingBonus: { food: 20 },
+  },
+};
+
+// ─── Departure sequence ───────────────────────────────────────────────────────
+// The six-step pre-game wizard. Each step is a binary or ternary choice that
+// accumulates resource bonuses and sets flags (pursuedByBandits, scrapped boat).
+// DepartureChoices is stored on GameState.departure so future events/mechanics
+// can reference how this particular game was set up.
+// Narrative text lives in ui.ts (clearly marked PLACEHOLDER for Vicente to swap).
+
+type ResourceBonus = Partial<Record<"food" | "wood" | "stone" | "gold", number>>;
+
+export type CompanionId = "craftsman" | "wisewoman" | "nobody";
+export interface CompanionDef {
+  id: CompanionId;
+  name: string;
+  bonusText: string;
+  startingBonus: ResourceBonus;
+  moraleDelta: number;
+}
+export const COMPANIONS: Record<CompanionId, CompanionDef> = {
+  craftsman: {
+    id: "craftsman", name: "A Skilled Craftsman",
+    bonusText: "+6 wood, +4 stone — a blacksmith's tools and a head for load-bearing joints.",
+    startingBonus: { wood: 6, stone: 4 }, moraleDelta: 0,
+  },
+  wisewoman: {
+    id: "wisewoman", name: "A Wisewoman & Midwife",
+    bonusText: "+2 food, +5 morale — she packed carefully and keeps the group steady.",
+    startingBonus: { food: 2 }, moraleDelta: 5,
+  },
+  nobody: {
+    id: "nobody", name: "Turn them away",
+    bonusText: "+5 food — fewer mouths; their share went back in the hold.",
+    startingBonus: { food: 5 }, moraleDelta: 0,
+  },
+};
+
+export type DepartureTimingId = "prepared" | "hasty";
+export interface DepartureTimingDef {
+  id: DepartureTimingId;
+  name: string;
+  bonusText: string;
+  startingBonus: ResourceBonus;
+  pursuedRisk: boolean;
+}
+export const DEPARTURE_TIMINGS: Record<DepartureTimingId, DepartureTimingDef> = {
+  prepared: {
+    id: "prepared", name: "Keep packing",
+    bonusText: "+5 wood, +3 stone — loaded properly. Word will have spread that you were leaving.",
+    startingBonus: { wood: 5, stone: 3 }, pursuedRisk: true,
+  },
+  hasty: {
+    id: "hasty", name: "Leave now",
+    bonusText: "No extra supplies — whatever you grabbed in the dark is what you have.",
+    startingBonus: {}, pursuedRisk: false,
+  },
+};
+
+export type AlarmResponseId = "grab" | "run";
+export interface AlarmResponseDef {
+  id: AlarmResponseId;
+  name: string;
+  bonusText: string;
+  startingBonus: ResourceBonus;
+  pursuedRisk: boolean;
+}
+export const ALARM_RESPONSES: Record<AlarmResponseId, AlarmResponseDef> = {
+  grab: {
+    id: "grab", name: "Go back for supplies",
+    bonusText: "+7 food — cellar stores and smoked meat, grabbed at a run. They saw you.",
+    startingBonus: { food: 7 }, pursuedRisk: true,
+  },
+  run: {
+    id: "run", name: "Cast off now",
+    bonusText: "Nothing extra. You made it out clean — they didn't see which way you went.",
+    startingBonus: {}, pursuedRisk: false,
+  },
+};
+
+export type ShipFateId = "keep" | "salvage" | "burn";
+export interface ShipFateDef {
+  id: ShipFateId;
+  name: string;
+  bonusText: string;
+  startingBonus: ResourceBonus;
+  scrapped: boolean;
+  clearsPursuit: boolean;
+}
+export const SHIP_FATES: Record<ShipFateId, ShipFateDef> = {
+  keep: {
+    id: "keep", name: "Keep her moored",
+    bonusText: "No extra resources — but the ship stays. You can send crew to look for survivors.",
+    startingBonus: {}, scrapped: false, clearsPursuit: false,
+  },
+  salvage: {
+    id: "salvage", name: "Break her down for timber",
+    bonusText: "+12 wood — three days and tired arms. The ship is gone.",
+    startingBonus: { wood: 12 }, scrapped: true, clearsPursuit: false,
+  },
+  burn: {
+    id: "burn", name: "Salvage what you can, then burn her",
+    bonusText: "+4 wood — the smoke kept them off your trail for a week.",
+    startingBonus: { wood: 4 }, scrapped: true, clearsPursuit: true,
+  },
+};
+
+export type LandingSpotId = "western_shore" | "southern_cove" | "northern_strand";
+export interface LandingSpotDef {
+  id: LandingSpotId;
+  name: string;
+  bonusText: string;
+  town: { x: number; y: number };
+}
+export const LANDING_SPOTS: Record<LandingSpotId, LandingSpotDef> = {
+  western_shore: {
+    id: "western_shore", name: "Western Shore",
+    bonusText: "Sheltered cove. Forest to the south, stone outcrops inland.",
+    town: { x: 6, y: 6 },
+  },
+  southern_cove: {
+    id: "southern_cove", name: "Southern Cove",
+    bonusText: "River delta. Fertile floodplain, good fishing — but further from the mountain.",
+    town: { x: 6, y: 10 },
+  },
+  northern_strand: {
+    id: "northern_strand", name: "Northern Strand",
+    bonusText: "Exposed north coast. Dense forest close by, but colder and more isolated.",
+    town: { x: 7, y: 3 },
+  },
+};
+
+export interface DepartureChoices {
+  origin: OriginId;
+  companion: CompanionId;
+  timing: DepartureTimingId;
+  alarm: AlarmResponseId;
+  shipFate: ShipFateId;
+  landingSpot: LandingSpotId;
+}
+
+// Years after game start that the "pursued by bandits" flag raises bandit event weight.
+export const BANDIT_PURSUIT_YEARS = 5;
+
 export interface GameState {
   year: number;
   pops: Pop[];         // replaces the flat population counter
@@ -113,6 +292,7 @@ export interface GameState {
   scriptedWaves: ScriptedWave[];
   pendingMerchant: boolean;  // merchant visit awaiting trade/decline — blocks end-year
   buildings: Record<BuildingId, boolean>;
+  departure: DepartureChoices;  // every choice made in the pre-game wizard
   log: LogEntry[];
   gameOver: boolean;
   selectedTile: { x: number; y: number } | null;
@@ -260,4 +440,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v15";
+export const SAVE_KEY = "isle-of-cambrera-save-v17";

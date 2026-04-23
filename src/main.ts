@@ -1,14 +1,25 @@
 import { render } from "./render";
 import { clearSave, loadGame, newGame, saveGame } from "./state";
 import { endYear } from "./turn";
-import { GameState } from "./types";
-import { attachCanvasClick, initUI, maybeShowIntro, maybeShowTradeModal, renderUI } from "./ui";
+import { DepartureChoices, OriginId } from "./types";
+import { attachCanvasClick, initUI, maybeShowIntro, maybeShowTradeModal, renderUI, showDepartureWizard } from "./ui";
 
 const canvas = document.getElementById("map") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
 if (!ctx) throw new Error("Canvas 2D context unavailable");
 
-let state: GameState = loadGame() ?? newGame();
+// Placeholder choices used only while the departure wizard overlay is visible.
+const PLACEHOLDER_DEPARTURE: DepartureChoices = {
+  origin: "seeds" as OriginId,
+  companion: "nobody",
+  timing: "hasty",
+  alarm: "run",
+  shipFate: "keep",
+  landingSpot: "western_shore",
+};
+
+const saved = loadGame();
+let state = saved ?? newGame(PLACEHOLDER_DEPARTURE);
 
 function redraw(): void {
   render(ctx!, state);
@@ -19,6 +30,12 @@ function redraw(): void {
   });
 }
 
+function startNewGame(choices: DepartureChoices): void {
+  state = newGame(choices);
+  saveGame(state);
+  redraw();
+}
+
 initUI({
   onEndYear: () => {
     endYear(state);
@@ -27,14 +44,16 @@ initUI({
   },
   onNewGame: () => {
     clearSave();
-    state = newGame();
-    saveGame(state);
-    redraw();
-    maybeShowIntro();
+    maybeShowIntro(() => showDepartureWizard(startNewGame));
   },
 });
 
 attachCanvasClick(canvas, () => state, redraw);
 
 redraw();
-maybeShowIntro();
+
+if (!saved) {
+  maybeShowIntro(() => showDepartureWizard(startNewGame));
+} else {
+  maybeShowIntro(() => {});
+}

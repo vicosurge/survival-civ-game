@@ -1,12 +1,17 @@
 import { exploreFrontier } from "./map";
-import { applyMorale, makeNewcomerPop } from "./state";import {
+import { applyMorale, makeNewcomerPop } from "./state";
+import {
+  ALARM_RESPONSES,
+  BANDIT_PURSUIT_YEARS,
   BuildingId,
+  DEPARTURE_TIMINGS,
   GameState,
   LogEntry,
   MORALE_ATTRACT_THRESHOLD,
   MORALE_PREY_THRESHOLD,
   SCRIPTED_WAVE_REFUGEES,
   ScriptedWaveId,
+  SHIP_FATES,
 } from "./types";
 
 interface EventDef {
@@ -198,16 +203,25 @@ export function fireScriptedWave(state: GameState, id: ScriptedWaveId): LogEntry
   return { year: state.year, text: SCRIPTED_WAVE_TEXT[id], tone: "neutral" };
 }
 
+function isPursued(state: GameState): boolean {
+  const { timing, alarm, shipFate } = state.departure;
+  if (SHIP_FATES[shipFate].clearsPursuit) return false;
+  return DEPARTURE_TIMINGS[timing].pursuedRisk || ALARM_RESPONSES[alarm].pursuedRisk;
+}
+
 function adjustedWeight(ev: EventDef, state: GameState): number {
   if (ev.id === "newcomers") {
-    // Each condition independently adds a multiplier step: thriving (morale) and
-    // organised (long house) both attract survivors — together they're the strongest signal.
     let mult = 1;
     if (state.morale >= MORALE_ATTRACT_THRESHOLD) mult++;
     if (state.buildings.long_house) mult++;
     return ev.weight * mult;
   }
-  if (ev.id === "bandits" && state.morale <= MORALE_PREY_THRESHOLD) return ev.weight * 2;
+  if (ev.id === "bandits") {
+    let mult = 1;
+    if (state.morale <= MORALE_PREY_THRESHOLD) mult++;
+    if (isPursued(state) && state.year <= BANDIT_PURSUIT_YEARS) mult++;
+    return ev.weight * mult;
+  }
   return ev.weight;
 }
 

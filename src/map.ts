@@ -20,6 +20,9 @@ import {
 // River: emerges from the mountain's southern base (11,9) and runs south to a
 // small three-tile delta at the south coast (10,11)(11,11)(12,11). Outside
 // BASE_REACH of town by design — scouts have something to find.
+// 'T' removed — town position is now a parameter to buildIsland() chosen during
+// the departure wizard (landing spot selection). All three landing spots are on
+// valid grass tiles within the island; see LANDING_SPOTS in types.ts.
 const ISLAND: string[] = [
   "....................",
   "....................",
@@ -27,7 +30,7 @@ const ISLAND: string[] = [
   ".....~ggfffgg~......",
   "....~gggfffggg~.....",
   "...~ggggffsssgg~....",
-  "...~ggTggsmmssgg~...",
+  "...~gggggsmmssgg~...",
   "..~gggggsmmmssggg~..",
   "..~gggfggsmsgggfg~..",
   "..~gggfffggrggfff~..",
@@ -46,7 +49,6 @@ const CHAR_TO_TERRAIN: Record<string, Terrain> = {
   "f": "forest",
   "s": "stone",
   "m": "mountain",
-  "T": "grass",
 };
 
 function randInt(lo: number, hi: number): number {
@@ -89,12 +91,11 @@ function makeTile(terrain: Terrain): Tile {
   };
 }
 
-export function buildIsland(): { tiles: Tile[][]; town: { x: number; y: number } } {
+export function buildIsland(landingPos: { x: number; y: number }): { tiles: Tile[][]; town: { x: number; y: number } } {
   if (ISLAND.length !== MAP_H) {
     throw new Error(`Island height ${ISLAND.length} !== MAP_H ${MAP_H}`);
   }
   const tiles: Tile[][] = [];
-  let town = { x: 0, y: 0 };
   for (let y = 0; y < MAP_H; y++) {
     const row = ISLAND[y];
     if (row.length !== MAP_W) {
@@ -105,11 +106,11 @@ export function buildIsland(): { tiles: Tile[][]; town: { x: number; y: number }
       const ch = row[x];
       const terrain = CHAR_TO_TERRAIN[ch];
       if (!terrain) throw new Error(`Unknown map char '${ch}' at (${x},${y})`);
-      if (ch === "T") town = { x, y };
       tileRow.push(makeTile(terrain));
     }
     tiles.push(tileRow);
   }
+  const town = landingPos;
   applyRiverFertility(tiles);
   ensureFertileNearTown(tiles, town);
   ensureForestNearTown(tiles, town);

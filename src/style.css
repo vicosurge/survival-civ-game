@@ -90,7 +90,28 @@ html, body {
   overflow: auto;
   background: #0d1418;
   border: 2px solid var(--panel-edge);
+  position: relative;
 }
+
+#tile-popup {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 5;
+  background: rgba(26, 20, 16, 0.93);
+  border: 1px solid var(--panel-edge);
+  padding: 0.55rem 0.7rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  max-width: 190px;
+  pointer-events: none;
+}
+#tile-popup.hidden { display: none; }
+#tile-popup .tile-title { color: var(--gold); font-weight: bold; margin-bottom: 0.2rem; font-size: 0.85rem; }
+#tile-popup .tile-title .coord { color: var(--muted); font-weight: normal; font-size: 0.72rem; margin-left: 0.25rem; }
+#tile-popup .tile-state { color: var(--muted); font-size: 0.75rem; margin-bottom: 0.3rem; }
+#tile-popup .muted { color: var(--muted); }
+#tile-popup .fertile { color: var(--good); }
 
 #map {
   display: block;
@@ -543,3 +564,99 @@ html, body {
   color: #3a2814;
 }
 #trade-panel .trade-buttons .trade-decline:hover { background: rgba(92, 67, 32, 0.15); }
+
+#departure-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99;
+  padding: 1.5rem;
+}
+#departure-overlay.hidden { display: none; }
+
+#departure-panel {
+  max-width: 720px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  background:
+    radial-gradient(ellipse at 20% 10%, rgba(120, 80, 40, 0.12), transparent 60%),
+    radial-gradient(ellipse at 80% 90%, rgba(60, 30, 10, 0.18), transparent 55%),
+    linear-gradient(180deg, #e9d7a9 0%, #d9c28a 100%);
+  color: #3a2814;
+  border: 2px solid #5c4320;
+  box-shadow:
+    0 0 0 4px #a88556 inset,
+    0 0 24px rgba(0, 0, 0, 0.6);
+  padding: 2rem 2.25rem;
+  font-family: "Georgia", "Times New Roman", serif;
+}
+
+.departure-step-indicator {
+  text-align: center;
+  font-size: 0.78rem;
+  color: #8a6535;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.4rem;
+  font-family: "Courier New", Courier, monospace;
+}
+
+#departure-panel h2 {
+  margin: 0 0 0.75rem 0;
+  text-align: center;
+  font-size: 1.6rem;
+  letter-spacing: 0.1em;
+  color: #6b3f0f;
+  text-transform: uppercase;
+  font-weight: normal;
+}
+
+.departure-narrative {
+  font-style: italic;
+  color: #5c4320;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  margin: 0 0 1.5rem 0;
+  text-align: justify;
+  text-indent: 1.2em;
+}
+
+.departure-cards {
+  display: grid;
+  gap: 1rem;
+}
+.departure-cards.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.departure-cards.cols-3 { grid-template-columns: repeat(3, 1fr); }
+
+.departure-card {
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.28);
+  border: 2px solid rgba(92, 67, 32, 0.35);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.departure-card:hover {
+  background: rgba(107, 63, 15, 0.14);
+  border-color: #6b3f0f;
+}
+
+.departure-name {
+  font-weight: bold;
+  font-size: 0.97rem;
+  color: #3a2814;
+  margin-bottom: 0.5rem;
+  line-height: 1.25;
+}
+
+.departure-bonus {
+  font-size: 0.8rem;
+  color: #3a6b0f;
+  font-family: "Courier New", Courier, monospace;
+  border-top: 1px dashed rgba(92, 67, 32, 0.4);
+  padding-top: 0.4rem;
+  line-height: 1.4;
+}
