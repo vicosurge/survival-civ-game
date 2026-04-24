@@ -33,313 +33,33 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage for saves (single save slot, key `isle-of-cambrera-save-v13` as of v0.3.4 — bump on breaking state-shape changes)
+- localStorage saves, single slot. Current key: `isle-of-cambrera-save-v18`. **Bump on any breaking state-shape change.** Old saves must fail loud (parse/validation error → `newGame()`), not load silently with `NaN`/`undefined` fields.
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
-## Current mechanics (v0.4.4)
+Version history lives in git log + README. This file describes current state only.
 
-### Trade basket + fishing lore (v0.4.4)
-
-Two playtest-driven features layered on top of the v0.4.3 bugfix pass.
-
-**Fishing builds maritime experience.** `state.fishingYears: number` accumulates the current fisher count each turn (in the yield-collection loop). The cumulative count reduces ship crew-loss odds on voyages:
-- `FISHING_XP_GATE = 2`: no bonus below this many fisher-years.
-- `FISHING_XP_PER_STEP = 3`: each additional 3 fisher-years past the gate adds another 1% reduction.
-- `FISHING_LOSS_MIN = 0.03`: absolute floor on effective crew loss chance, so no amount of fishing makes voyages guaranteed safe.
-- Base `BOAT_CREW_LOSS_CHANCE = 0.10`, so the bonus caps at −7% (2 yrs → 9%; 5 yrs → 8%; ... 20+ yrs → 3%).
-- `fishingLossReduction(years)` and `effectiveCrewLossChance(state)` in turn.ts are exported for the ship panel to surface the current bonus.
-
-Design intent: fishing was previously a variable-yield food source with no other strategic value. The bonus makes a steady fisher presence a maritime-literacy investment — without flipping fishing into the dominant food job (farmers still produce more reliably).
-
-**Trade basket.** The merchant modal now accepts a combined **basket** of buys and sells in the same visit. `TradeBasket = Record<TradeAction, Record<TradeResource, number>>` is declared in types.ts with helpers `emptyBasket`, `basketTotal`, `basketGoldDelta`. `canExecuteTradeBasket` and `executeTradeBasket` in turn.ts replace the old single-action functions.
-
-UI is three rows (food/wood/stone), each with independent sell and buy steppers. Global cap `TRADE_MAX_PER_VISIT = 5` applies to the *combined* unit count across all six steppers. `+Sell` disables when capped or when the player has none of that resource; `+Buy` disables when capped or when the current basket's net would leave gold negative. The confirm button disables unless the basket is non-empty and fully valid.
-
-Design intent: the per-visit cap stays the strategic constraint — merchants aren't an infinite-liquidity exploit. The basket just lets the player express a single two-sided swap ("sell 3 wood, buy 1 stone") instead of having to choose one.
-
-**SAVE_KEY bumped to `v18`** — `fishingYears: number` is required on GameState; v17 saves won't load.
-
-### Bugfix & polish pass (v0.4.3)
-
-A round of playtest fixes and chronicle polish; no new systems.
-
-**Bugs fixed:**
-- `ruins` random event gated on `state.scouts > 0` **and** `hasUndiscoveredFrontier(tiles)` — no more scouts-finding-ruins-without-scouts. Event text also drops the "0 tiles revealed" trailing clause when nothing was revealed.
-- `Boat.status` gains `"lost"`. `resolveVoyage` sets `status: "lost"` when every crew member dies at sea (previously went back to `"docked"`, letting the player dispatch again). UI ship panel shows a terminal "Lost at sea." notice.
-- Bandit averted log now reads "the palisade" — previously always said "the **new** palisade" even years after construction.
-- Scouts allocated when no frontier remains: `+Scout` is disabled via `hasUndiscoveredFrontier(state.tiles)`, and `turn.ts` auto-retires any active scouts on the turn the last tile is revealed with a chronicle line ("The island is fully mapped.").
-
-**Chronicle polish:**
-- Year grouping: `renderLog` brackets consecutive same-year entries in a `.year-group` with a `.year-header` ("— Year N —"). CSS gives each group its own bottom rule.
-- **Single population tally per turn.** Elder deaths, coming-of-age, and births all route through a `tally` object in `endYear` and emit one combined line via `emitPopulationTally`. Famine and bandit deaths remain separate — they're event-flavoured and deserve their own line.
-
-**Founder morale weighting:**
-- `Pop.founder?: boolean` set `true` by `makeStarterPop` / `makeStarterChild` only.
-- Any founder death applies an additional `MORALE_FOUNDER_EXTRA` (−3) on top of the base death penalty. Applied at three sites: old-age (turn.ts), famine (turn.ts), bandit raid (events.ts).
-- `MORALE_OLD_AGE_DEATH` bumped from 1 → 2. A non-founder elder passing is now a noticeable morale dip; a founder elder passing is −5.
-
-**Design intent to preserve:**
-- **Tally merges pop changes only.** Don't fold famine/bandit/event deaths into the tally — those belong to the event that caused them and want their own tonal emphasis. The tally is for the quiet turning of the year.
-- **Founder flag is starter-only.** Newcomers from events, refugees brought home by the boat, and babies born in-game are **not** founders. Founder morale weight is a one-generation premium that decays naturally as the original band ages out.
-- **Save key not bumped.** `Pop.founder` is optional; old saves load with no founders marked and degrade to pre-v0.4.3 morale behaviour (no extra founder penalty). `Boat.status = "lost"` is only reached by new voyages; old saves in the buggy docked-but-lost state keep the old behaviour until a new game.
-
-**UI-only additions (v0.4.3):**
-- `VERSION` and `AUTHOR` constants in `types.ts`; topbar shows `v0.4.3 · by Vicente Muñoz`; intro papyrus carries an author + Claude Code collaborator credit block.
-- Cambrera pronunciation hint `(cam-BREH-rah)` added inline in the intro.
-
-## Current mechanics (v0.3.2)
-
-### River + Fishers + Hunting Lodge (v0.3.2)
-
-A food-job triad settles into place this version: **hunters** (transitory — beat break-even immediately but drain a forest reserve), **farmers** (sustainable — break-even on baseline grass, +1 on fertile, deferred by cultivation year), and **fishers** (variable — random yield each year, no reserve, no cultivation). Each is distinct by long-term character, not just by terrain.
-
-**River.** Five tiles threaded from the central mountains to the south coast with a small delta. Defined in `ISLAND` (map.ts) with the `r` char. Any grass tile within Chebyshev-1 of a river tile is set fertile during island build (`applyRiverFertility`) — a visible geographic hook: the player can see where farming is rich before clearing a single field. Rivers themselves are workable by fishers at capacity 1–2 (see `CAPACITY_RANGE`).
-
-**Fishers.**
-- Work both `beach` and `river` tiles — the first multi-terrain job. `JOB_TERRAINS` is an array (`Exclude<Job,"scout">` → `Terrain[]`) rather than the old scalar map.
-- Yield is randomised per worker per harvest: baseline water rolls `FISHER_YIELD_BASE = [1,3]`, rich water rolls `FISHER_YIELD_RICH = [2,4]`. Rolled fresh in `turn.ts` Step 1. Projection uses the average (2 and 3 respectively).
-- No cultivation and no fallow. Assigning a fisher goes `wild → worked` directly; pulling the last one goes `worked → wild`. Water doesn't care if you show up.
-- No reserve drain. You can fish forever; variance is the only risk.
-- `fishRichness: 0 | 1` on beach/river tiles, rolled at `FISH_RICH_CHANCE = 0.2`. Surface as "Rich waters — crab, tuna, shoals" in the tile info panel; drawn as foam flecks on the map.
-- `ensureFishingNearTown` guarantees a discovered beach or river tile in reach on turn 1.
-
-**Hunting Lodge (trap/buff building).**
-- Cost: 10 wood. Grants +0.5 food per hunter per year (`HUNTING_LODGE_HUNTER_BONUS`), floored at collection time.
-- Deliberate trap: the bonus is only useful while forests last. Once the forest reserve is spent the lodge is a dead asset — and the 10 wood sunk in it is wood that can't build a palisade or a future dock.
-- Same 0.5 shape as the granary bonus so floor-at-collection logic can be reused: `Math.floor(t.workers * (YIELD + lodgeBonus))` before draining reserve keeps reserves integer.
-- Does *not* block any event — blocker is just one possible effect (granary/palisade/well use it); this building is a pure buff-with-tradeoff.
-
-**Design intent to preserve:**
-- **Food-job triad must stay differentiated.** If a future change lets hunters refill the forest, or lets fishers have a reserve, the triad collapses into "three ways to do the same thing." Keep hunter=transitory, farmer=sustainable+compounding (future: farm adjacency), fisher=variable+scaling (future: dock/pier for longer range and trade).
-- **River fertility is automatic, not something to tune per-tile.** Keep `applyRiverFertility` as a Chebyshev-1 sweep run after tiles exist — bolting new conditions onto it defeats the "water = rich land" visual legibility.
-- **Fishers skip both cultivating and fallow intentionally.** Don't reintroduce those states as "consistency" — the mechanical variance (random yield) and the narrative ("you cast nets, you don't till them") are the features.
-- **Hunter Lodge stays cheap.** The trap only works if the player is tempted. If it's expensive it just becomes a mid-late building; the point is the early-game regret curve.
-- **Auto-allocator still picks tiles** — the player never has to manually place a farmer/hunter/fisher. `findEligibleTile` sorts by `tileBonusForJob` (fertility for farmer, fishRichness for fisher, 0 otherwise) DESC, then distance ASC. When farm adjacency synergy ships (deferred v0.4+), extend `tileBonusForJob` so the auto-placer steers toward clusters.
-- **Shed order in famine:** scout → quarryman → woodcutter → hunter → fisher → farmer. Food producers protected last; between food jobs, farmers (lowest-variance, sustainable) are the last to go.
-- **Forest tiles have two independent slots** (`tile.hunterWorkers` + woodcutters = `tile.workers - tile.hunterWorkers`). Both can coexist on the same tile up to capacity. When the game reserve depletes, `tile.gameExhausted = true` closes the hunter slot permanently — woodcutters stay. Lodge bonus applies only to `tile.hunterWorkers > 0` tiles.
-- **SAVE_KEY bumped to `v13`** — `hunterWorkers` + `gameExhausted` replace `job` on every tile. v12 saves won't load.
-
-## Current mechanics (v0.3.1)
-
-### Hunters (v0.3.1)
-
-A fourth production job alongside farmer/woodcutter/quarryman. Hunters work forest tiles and produce **3 food/year** (net +1 surplus after eating), draining the forest's hidden game reserve. This creates the early-game arc: hunt to survive → game thins → transition to farming. Woodcutters do **not** drain the same reserve — timber regrows, game doesn't.
-
-**Key invariant:** a forest tile tracks hunters and woodcutters independently — `tile.hunterWorkers` counts hunters; `tile.workers - tile.hunterWorkers` counts woodcutters. Both can occupy the same tile up to capacity. When the game reserve hits 0, `tile.gameExhausted = true` evicts all hunters but woodcutters remain active.
-
-**Guaranteed forest at start.** `ensureForestNearTown` (map.ts) ensures at least one forest tile is discovered on turn 1 — settlers picked a site with game to hunt.
-
-**Balance:** 3 food vs 2 yield for farmers is intentional. Hunters beat break-even from turn 1 (no cultivation wait, no wood cost), but they're spending a depletable resource doing it. Once a forest is hunted out it's gone — farming on fertile grass matches the hunter's net yield sustainably.
-
-**Shed order in crisis:** quarryman → woodcutter → hunter → farmer. Hunters produce food so they're protected longer than woodcutters in famine-driven reconcile.
-
-**SAVE_KEY bumped to `v10`** because `tile.job` is a new required field; v9 saves won't load.
-
-## Current mechanics (v0.3.0)
-
-### Morale (v0.3.0)
-
-A settlement-wide 0–100 stat (`state.morale`, starts at `MORALE_START = 80`) that reflects how the year went. It is a **lagging indicator** — no passive drift; morale only moves in response to concrete events. Gates growth and biases the random-event roll.
-
-**Deltas (all clamped to 0–100 via `applyMorale` in `state.ts`):**
-- Food surplus after consumption: +2 / year. Food deficit: −3 / year.
-- Famine death: −5 per pop lost.
-- Old-age death: −1 per pop.
-- Coming-of-age: +2 per pop.
-- Birth: +2.
-- Events: bountiful +5, locusts −4, mild_winter +3, bandits (−7 on death, else −2), newcomers +4, forest_fire −3. Scripted waves: +2 per refugee.
-
-**Gates and biases:**
-- `MORALE_GROWTH_GATE = 50` — births only fire at or above this. Food surplus alone no longer guarantees growth.
-- `MORALE_ATTRACT_THRESHOLD = 80` — at or above, `newcomers` event weight is doubled in `adjustedWeight` (thriving settlements attract wanderers).
-- `MORALE_PREY_THRESHOLD = 30` — at or below, `bandits` event weight is doubled (desperate rumours travel, desperate people follow).
-
-**UI:** a "Mood" chip in the topbar after Gold, coloured via `.mood-good` (≥70 green), `.mood-mid` (40–69 gold), `.mood-bad` (<40 red) with a tooltip summary.
-
-**Design intent to preserve:**
-- **Lagging, not draining.** Morale is a reaction to what happened, not a bucket that leaks while the player is away. A quiet year leaves it where it is — boring is fine. This is to avoid the Sim-style "fight the decay meter" feel.
-- **Growth gate is the load-bearing effect.** The event biases are flavour; the mechanical consequence the player plans around is "no new babies if morale cracks." Don't add more gates (production, build, trade) without a fresh conversation — morale should stay narrow.
-- **Scripted-wave morale bump scales with refugees** so it stays in sync with the `newcomers` random event (both net +4 for two adults).
-- **Extension path:** religion / shrines (planned) will contribute morale; don't wire them into the random events table — add fresh helpers or a periodic step in `turn.ts`. Keep morale's inputs legible; don't let it become a catch-all score.
-- **SAVE_KEY bumped to `v9`** because `morale` is a new required field; v8 saves won't load.
-
-### Balance tuning (v0.2.9)
-
-Early-game harshness reduced without touching the core farming break-even model.
-
-| Constant | Before | After | File |
-|---|---|---|---|
-| Starting food | 20 | 30 | `state.ts:newGame()` |
-| Starting wood | 10 | 18 | `state.ts:newGame()` |
-| Starting stone | 0 | 5 | `state.ts:newGame()` |
-| `LIFESPAN_RANGE` | [8, 12] | [10, 15] | `types.ts` |
-| Locusts damage | -8 food | -6 food | `events.ts` |
-| Forest fire damage | -8 wood | -6 wood | `events.ts` |
-
-**What was not changed:** farmer yield (2), `FOOD_PER_ADULT` (2), growth threshold (pop × 3). The farming break-even design — one farmer sustains one adult on baseline grass, surplus requires fertile tiles — is preserved. No SAVE_KEY bump needed (state shape unchanged).
-
-## Current mechanics (v0.2.8)
-
-### Buildings (v0.2.8)
-
-One-time-purchase settlement upgrades declared in `types.ts:BUILDINGS`. Each has a resource cost and (via the events table) blocks a specific negative event. `state.buildings: Record<BuildingId, boolean>` tracks what's built. UI lives in a dedicated sidebar section below Villagers (`#buildings-section`); clicking Build calls `build()` in `turn.ts` which subtracts resources and flips the flag.
-
-**Buildings:**
-| Building | Cost | Gate | Bonus | Blocks |
-|---|---|---|---|---|
-| Granary | 30 food, 15 wood | — | +0.5 food/farmer/year (floored at harvest) | locusts |
-| Palisade | 20 wood, 25 stone | — | — | bandits |
-| Well | 10 wood, 15 stone | — | — | forest_fire |
-| Hunting Lodge | 10 wood | — | +0.5 food/hunter/year — while forest lasts | — |
-| Long House | 20 wood, 15 stone | 25 pops | +8 morale (one-time); newcomers event weight ×3 (stacks with morale bonus) | — |
-
-**Blocker mechanism:** events carry optional `blockedBy: BuildingId` + `blockedText: string`. `rollEvent` picks normally, then if the chosen event is blocked, returns the `blockedText` as a "good" tone log and skips the `apply`. The blocked roll still consumes the year's event slot — the "averted" chronicle line *is* the event — which is narratively satisfying (the player sees their investment pay off) and keeps the turn pipeline unchanged.
-
-**Design intent to preserve:**
-- **Granary cost uses food deliberately.** It's the one sink for excess food early — gives food surplus somewhere to go instead of dead-weighting the stockpile. Palisade and Well need wood+stone, which forces redeploying farmers into woodcutters/quarrymen. This is the deliberate answer to "farming-only settlements have nothing to do with surplus" from Vicente's Y50 playtest.
-- **One-time purchase, no durability.** Buildings don't wear out or get destroyed. Keep it that way unless we add a raid-escalation mechanic that specifically targets structures — otherwise it's bookkeeping without payoff.
-- **Extension path:** adding a building = add a `BuildingId`, append to `BUILDINGS` table, optionally tag an event with `blockedBy` + `blockedText`. No turn.ts or UI churn. Future buildings may not block events at all (e.g. a watchtower that extends reach, a market that improves trade rates) — the blocker is one effect among many; don't couple the system to it.
-- **SAVE_KEY bumped to `v8`** because `buildings` is a new required field; v7 saves won't load.
-
-### Long House — civic milestone (v0.4)
-
-The **Long House** is a governance building gated behind **25 pops** (total, including children). It represents the moment a refugee camp becomes a deliberate community with collective decision-making — the narrative turning point toward Cambrera as an independent nation.
-
-**Effects:**
-- **+8 morale** applied once on construction via `applyMorale`.
-- **Newcomers event weight ×3** when both Long House is built and morale ≥ `MORALE_ATTRACT_THRESHOLD` (otherwise ×2 for long_house alone, ×2 for morale alone). Word spreads: an organised settlement draws survivors.
-- **Unlocks the civic building tier** — roads, militia training, and future buildings require Long House first (gate enforced in `canBuild`).
-
-**Design intent to preserve:**
-- **Pop gate is total pops, not adults.** 25 people — children included — is a real community. Using adults-only would push the gate later and feel arbitrary.
-- **The building persists even if population drops below 25.** The institution exists; you don't unlearn governance. A shrinking community still has its hall.
-- **Newcomer multiplier stacks deliberately.** High morale = people are happy here. Long House = people know you're organised. Both together is the strongest signal to outsiders. Three times base weight (≈22% chance/year vs 9% base) is meaningful without being dominant.
-- **Future Frostpunk-style decisions** (who leads, what values Cambrera holds) should be triggered by the Long House as the civic anchor. Don't wire those decisions into the random events table — add a dedicated decision system in a future version.
-- **SAVE_KEY bumped to `v15`** — `road: boolean` added to every `Tile`; v14 saves won't load.
-
-### Starting origins + UX polish (v0.4.1)
-
-**Starting origins.** Three choices presented in a parchment overlay between the intro and the first turn. Stored as `state.origin: OriginId` so future event hooks can reference what the player brought. Bonuses apply additively on top of base starting resources in `newGame(origin)`:
-- **Seeds & Farming Tools** — +10 food
-- **Fishing Tackle & Rope** — +8 food, +4 wood
-- **Preserved Provisions** — +20 food
-
-The origin overlay is the architectural stub for the full departure-sequence milestone (companion picks, packing-under-pressure choices, landing spot selection). The data shape (`OriginDef.startingBonus`) is intentionally open-ended for future bonuses beyond resource deltas.
-
-**Tile info popup.** `#tile-popup` appears at the top-right corner of the map canvas when a tile is selected — `pointer-events: none` so clicks pass through. The sidebar tile section keeps the Build Road action button.
-
-**Building cost chips** now show full words (`30 food / 15 wood`) instead of single-letter abbreviations.
-
-**Intro era anchor.** Added a paragraph to the intro papyrus that names the tech level (iron axes, ploughshares, timber halls, stone keeps) and the fading-magic premise, so the genre is unambiguous on first read.
-
-**SAVE_KEY bumped to `v16`** — `origin: OriginId` added to `GameState`; v15 saves won't load.
-
-### Full departure wizard (v0.4.2)
-
-Six-step pre-game wizard. Narrative text is marked PLACEHOLDER in `ui.ts:WIZARD_NARRATIVES` — Vicente will replace those paragraphs. The mechanical layer is complete.
-
-| Step | Choices | Effect |
-|------|---------|--------|
-| 1 What did you bring? | seeds / fishing / provisions | Resource bonus |
-| 2 Who came with you? | craftsman (+6w +4s) / wisewoman (+2f +5 morale) / nobody (+5f) | — |
-| 3 Departure timing | prepared (+5w +3s) / hasty | Sets `pursuedRisk` if prepared |
-| 4 The alarm bells | grab (+7f) / cast off | Sets `pursuedRisk` if grab |
-| 5 The ship | keep / salvage (+12w, scrapped) / burn (+4w, scrapped, clears pursuit) | `Boat.status = "scrapped"` |
-| 6 Where do you land? | western_shore (6,6) / southern_cove (6,10) / northern_strand (7,3) | Dynamic town placement |
-
-**Bandit pursuit:** `isPursued(state)` in events.ts: true if `timing===prepared OR alarm===grab` AND `shipFate!==burn`. Doubles bandit weight for years 1–5. Burning the ship clears the trail narrative-mechanically.
-
-**Landing spots:** `buildIsland(landingPos)` now parameterized. `T` removed from ISLAND string (row 6, col 6 is now plain `g`). Each spot has distinct adjacency to resources.
-
-**SAVE_KEY bumped to `v17`** — `origin: OriginId` replaced by `departure: DepartureChoices`; `Boat.status` gains `"scrapped"`; v16 saves won't load.
-
-### Roads (v0.4)
-
-Roads are the first **tile-targeted construction action**. Player clicks a tile → a "Build Road" button appears in the tile info panel. Roads cost **2 wood + 5 stone** per tile, are instant, and persist permanently.
-
-**Reach mechanic:** road tiles act as reach anchors identically to worked tiles — any tile within `WORKED_REACH` (1) of a road is in reach. This lets the player push their frontier outward by chaining roads, without needing a worker stationed there.
-
-**Constraints:**
-- Requires **Long House** (civic gate). Gated in `canBuildRoad` in turn.ts.
-- Tile must be **in reach** — you build outward from existing territory, not leapfrog.
-- Cannot be placed on water or mountain tiles.
-- The **town tile gets a road automatically** when the Long House is built — narrative anchor; the hall and the first paved path are the same civic moment.
-
-**Render:** a packed-earth crosshatch overlay (horizontal + vertical bands through the tile centre, worn stone at the intersection) drawn after all other tile layers so it's always visible regardless of terrain or work state.
-
-**Design intent to preserve:**
-- **Roads extend reach, not production.** They don't yield anything — they're infrastructure. Don't add yield bonuses to road tiles without a fresh design conversation.
-- **Must stay connected to existing reach.** `canBuildRoad` enforces `isInReach` — you can't skip tiles. This keeps road networks legible on the map and forces deliberate route planning.
-- **Cost is per-tile stone-heavy.** Stone is the slowest resource; a long road requires sustained quarrying. This is intentional — roads should feel like a real commitment, not a free terrain hack.
-- **Future: road over the mountain pass.** Mountain tiles are currently blocked. When the pass mechanic ships, it should cost significantly more and be the narrative unlock for contact with the far settlement.
-
-### Merchant trade modal (v0.2.7)
-
-The random `merchants` event no longer auto-trades. When it rolls, it sets `state.pendingMerchant = true` and logs a neutral arrival line; `maybeShowTradeModal` (called from `redraw()` in `main.ts`) then opens a parchment-style overlay (`#trade-overlay`) that lets the player pick one action (buy/sell × food/wood/stone), dial quantity 1–`TRADE_MAX_PER_VISIT` (5), and either Trade or Decline. `executeTrade`/`declineTrade` in `turn.ts` clear the flag and append a log entry.
-
-**Rates** (`TRADE_RATES` in `types.ts`): sell food/wood at 1 gold each, stone at 2 gold each; buy food/wood at 2 gold each, stone at 4 gold each. Asymmetric by design — merchants are not a neutral market, they take their cut. Stone is double because it's the slowest resource to produce.
-
-**Design intent to preserve:**
-- **End Year is blocked** while `pendingMerchant` is true. The turn button re-labels to "Merchants waiting…" and disables. This keeps the chronicle ordering clean (the trade is resolved in the same year the merchants arrived) and prevents the player from silently "skipping" the visit by spamming End Year.
-- **One trade per visit.** The cap of 5 units per visit combined with a single action per visit is what keeps merchants from becoming an infinite-liquidity exploit. Don't add "trade again" — the constraint is the point.
-- **Decline costs nothing.** The player should be able to shake their head at bad prices without penalty; the strategic tension is "do I spend gold on stone now or wait for a cheaper visit that may never come."
-- **Flag-based pause, not async/await.** `pendingMerchant` is a boolean on state that the modal closes by mutating state + calling the caller's redraw callback. This keeps the turn pipeline synchronous and the save format plain JSON. If future events need the same pause semantics (e.g. a raid-or-pay-tribute choice), add a similar flag rather than introducing a Promise-driven turn loop.
-- **SAVE_KEY bumped to `v7`** because `pendingMerchant` is a new required field; v6 saves won't load.
-
-### Scripted Exarum-survivor waves (v0.2.6)
-
-Three one-shot narrative events scheduled at `newGame()` — target years `SCRIPTED_WAVE_TARGETS = [5, 10, 20]` with ±`SCRIPTED_WAVE_JITTER = 3` years of jitter, ordering enforced by `SCRIPTED_WAVE_MIN_GAP = 3`. Rolled fire-years live on `state.scriptedWaves: ScriptedWave[]`. At step 4 of the turn pipeline, if a wave's year matches `state.year` and it hasn't fired, it **replaces** the random event roll for that year, spawns `SCRIPTED_WAVE_REFUGEES = 2` adults, and writes a lore-length log entry. Narrative content is in `events.ts:SCRIPTED_WAVE_TEXT` — do not drift from the canonical names in `memory/project_cambrera_lore.md` (Exarum, Klon, Destum, Cuarecam, Duras/Vizqe/Drazna/Harab/Bludris, Bura, Captain Amezcua, draconians).
-
-**Design intent to preserve:**
-- Waves replace (not augment) the random event for that year — avoids mixing "survivors arrive + locusts" in a single chronicle turn, which would muddle the narrative beat.
-- Refugee count matches the random `newcomers` event (2 adults) so the scripted arc doesn't secretly snowball the economy.
-- Jitter (±3) means two playthroughs won't share fire-years exactly, but the arc still lands roughly at Y5/Y10/Y20.
-- `fired` flag on each wave (not a cleared array) because save/load must persist which ones have played. Old saves without `scriptedWaves` won't load — SAVE_KEY bumped to `v6`.
-- Extension path: adding a 4th scripted event means adding a `ScriptedWaveId`, appending to `SCRIPTED_WAVE_TARGETS`, and writing the text — no turn.ts or state.ts churn.
-
-### Allocator sort order (v0.2.5)
-
-`findEligibleTile` sorts by **fertility DESC, distance ASC**. Fertile grass is picked before baseline grass even if further from town; among tiles of equal fertility the nearest wins. Wood/stone tiles always have `fertility = 0` so for them distance remains the effective primary. The previous v0.2.4 ordering (distance primary, fertility tiebreaker) meant the town tile always outranked fertile neighbors — the allocator would pile workers onto the town tile until its capacity filled before ever touching rich land nearby. Keep fertility as primary when tuning: the whole point of fertile-land mechanics is that the allocator steers toward them without the player micromanaging.
-
-
-
-### Intro papyrus (v0.2.4)
-
-`#intro-overlay` in `index.html` is a parchment-style overlay with the Cambrera backstory. Hidden by default via the `hidden` class. `maybeShowIntro()` in `ui.ts` un-hides it on first load and after New Game, unless `localStorage["isle-of-cambrera-skip-intro"] === "1"`. The "Skip this on future games" checkbox inside the overlay sets/clears that key. No game-state impact; CSS-only styling, no assets.
+## Mechanics
 
 ### Pops
 
-A pop is a `{ age, lifespan }` record, not a counter. See `Pop` in `types.ts`.
+A pop is a `{ age, lifespan, founder? }` record, not a counter. See `Pop` in `types.ts`.
 
-- `ADULT_AGE = 4` — pops under this can't work and eat less (`FOOD_PER_CHILD = 1` vs `FOOD_PER_ADULT = 2`).
-- `LIFESPAN_RANGE = [8, 12]` — rolled per pop; they die of old age when `age >= lifespan`.
-- `STARTER_AGE_RANGE = [4, 7]` — five starter adults are staggered, and their lifespan is floored at `age + 6` so the whole cohort can't die before babies mature (v0.2.2 fix).
-- Starter settlement also includes **2 children** (age 0–2) via `makeStarterChild()` so there's a second-generation runway from turn 1.
-- **Turn-1 allocation is 3 farmers + 1 scout; the 5th adult is intentionally idle.** Food-first; the player decides where to put the 4th worker (more farming, more scouting, quarrying, or resting). Don't pre-place a starter woodcutter.
-- `NEWCOMER_AGE_RANGE = [4, 7]` — wanderers arriving via the `newcomers` event (or via the rescue ship) are adults.
-- Babies are born at age 0 via `makeBabyPop()` when growth fires.
+- `ADULT_AGE = 4` — under this, pops can't work and eat less (`FOOD_PER_CHILD = 1` vs `FOOD_PER_ADULT = 2`).
+- `LIFESPAN_RANGE = [10, 15]` — rolled per pop; they die of old age at `age >= lifespan`.
+- `STARTER_AGE_RANGE = [4, 7]` — five starter adults staggered. Lifespan floored at `age + 6` so the founding cohort can't all die before babies mature. **Don't remove this floor** when tuning lifespan.
+- Starter settlement also includes **2 children** (age 0–2) via `makeStarterChild()` for second-generation runway.
+- **Turn-1 allocation is 3 farmers + 1 scout; the 5th adult is intentionally idle.** The player picks where to put the 4th worker.
+- `NEWCOMER_AGE_RANGE = [4, 7]` — newcomers/refugees (event, boat, scripted waves) arrive as adults.
+- Babies born at age 0 via `makeBabyPop()` when growth fires.
+- **Founder flag is starter-only.** `makeStarterPop`/`makeStarterChild` set `founder: true`. Newcomers, refugees, and babies are **not** founders. Founder death applies `MORALE_FOUNDER_EXTRA = -3` on top of base death morale at three sites: old-age, famine, bandits. One-generation premium that decays naturally as the original band ages out.
 
-**Famine kills the youngest first.** The greedy loop in `endYear` sorts pops by age ascending, pops them off while accumulating `FOOD_PER_CHILD`/`FOOD_PER_ADULT` worth of shortfall per death. Deliberate design choice: it means a food crisis is a delayed-productivity debt (a dead child is 4 years of future labor lost) rather than an immediate one, and it keeps food as the perpetual priority during growth bursts.
+**Famine kills the youngest first.** Greedy loop in `endYear` sorts pops by age ascending and pops off while accumulating `FOOD_PER_CHILD`/`FOOD_PER_ADULT` worth of shortfall per death. A dead child is 4 years of future labor lost — delayed productivity debt, not immediate crisis. Keeps food as the perpetual priority during growth bursts.
 
 **Bandits kill adults**, not children (defenders fall). `removePops(state, 1, "adult")` in `events.ts`.
 
-### Rescue ship (v0.2.2)
+### Tiles — states, yields, reach, allocator
 
-The settlers arrived by ship; it's still there. `state.boat` tracks it:
-
-```ts
-Boat = { status: "docked" | "voyage", returnYear: number | null, crew: Pop[] }
-```
-
-- **Dispatch** via `dispatchBoat(state)` — takes 2 idle adults (youngest first, best return odds), moves them out of `state.pops` into `boat.crew`. Voyage is 2 years (`BOAT_VOYAGE_YEARS`).
-- **While at sea**, crew ages in turn step 0.5 and can die of old age (flavored as "passing during the voyage"). They don't consume food at home.
-- **Return** rolls a per-crew `BOAT_CREW_LOSS_CHANCE` (10%), then a weighted refugee count from `BOAT_REFUGEE_WEIGHTS` ([2,4,3,1] for 0/1/2/3). Refugees are spawned via `makeNewcomerPop()` so they arrive as adults.
-- **If all crew are lost**, no refugees roll; the ship is considered lost at sea and a mournful log entry fires. `state.boat` resets to docked either way.
-
-Narrative hook: this is how you find the *other* war survivors Cambrera was founded for. Keep it thematic in log text.
-
-### Tile states
-
+**State machine:**
 ```
 wild ──assign worker──▶ cultivating ──(1 year)──▶ worked ──(0 workers)──▶ fallow
                                │                        │                   │
@@ -351,133 +71,269 @@ fallow ──(2 years)──▶ wild         (grass only; forest/stone can be ex
 fallow ──assign worker──▶ worked   (re-opened; infrastructure survives grace period)
 ```
 
-### Yields
+Respect the state machine — always transition through `cultivating` / `fallow`, never skip. Two exceptions:
+- **Starter workers** (`placeStarterWorker`) drop directly into `worked` — settlers prepared ground on arrival.
+- **Fishers** go `wild → worked` on assign and `worked → wild` on last-fisher-removed. Water doesn't care if you show up. Don't reintroduce cultivating/fallow for fishers as "consistency" — the mechanical variance and the narrative ("you cast nets, you don't till them") are the features.
 
-Per-worker, only in `worked` state:
-- Farmer (grass): `YIELD_PER_WORKER.farmer + tile.fertility` food/year. Base 2; fertile grass tiles add +1.
-- Woodcutter (forest): 2 wood/year. Does **not** drain `tile.reserve` — timber regrows, so woodcutters can work a forest tile indefinitely.
-- Hunter (forest): 3 food/year, drains `tile.reserve` (game population). Net +1 food surplus (hunter eats 2). Finite — the forest is hunted out; when reserve hits 0 the tile becomes exhausted and hunters are evicted.
-- Quarryman (stone): 1 stone/year, drains tile `reserve`
+**Yields per worker in `worked` state:**
+- **Farmer** (grass): `2 + tile.fertility` food/year. Base 2; fertile grass adds +1. Break-even on baseline grass (farmer eats 2) — surplus requires fertile tiles, children (who eat 1), or events. **Don't close this gap** by bumping base farmer yield; "good land is a real resource" is load-bearing.
+- **Woodcutter** (forest): 2 wood/year. Does **not** drain reserve — timber regrows.
+- **Hunter** (forest): 3 food/year, drains `tile.reserve` (game population). Net +1 surplus. Finite — when reserve hits 0, `tile.gameExhausted = true` evicts hunters permanently.
+- **Fisher** (beach/river): random per harvest — `FISHER_YIELD_BASE = [1,3]` baseline, `FISHER_YIELD_RICH = [2,4]` on `fishRichness: 1` tiles (`FISH_RICH_CHANCE = 0.2`). No reserve, no cultivation. Projection uses the average.
+- **Quarryman** (stone): 1 stone/year, drains reserve.
 
-**Forest tile dual slots.** `tile.hunterWorkers` tracks the hunter headcount; `tile.workers - tile.hunterWorkers` gives woodcutters. Both can coexist. When the game reserve depletes `tile.gameExhausted` is set — the hunter slot closes permanently but woodcutters continue. Tile state (`worked`/`fallow`/`wild`) is driven by `tile.workers`; a game-exhausted tile with woodcutters stays `worked` and never enters the old `exhausted` state.
+**Forest tile dual slots.** `tile.hunterWorkers` tracks hunters; `tile.workers - tile.hunterWorkers` = woodcutters. Both coexist up to capacity. Game exhaustion closes the hunter slot only; woodcutters keep going. Tile state is driven by `tile.workers`, so a game-exhausted tile with woodcutters stays `worked`.
 
-**Hunting arc.** Early game: hunters provide food without the cultivation wait. Mid game: forests thin; the player must transition to farming. Starter reveal guarantees at least one forest tile is visible from turn 1 (`ensureForestNearTown` in `map.ts`).
+**Food-job triad must stay differentiated.** Hunter = transitory (drains game), farmer = sustainable + compounding via fertility, fisher = variable + scaling. If a change lets hunters refill game or gives fishers a reserve, the triad collapses into three ways to do the same thing.
 
-Forest and stone tiles have a **hidden** `reserve` (forest 30–120, stone 60–240). When reserve hits 0, tile becomes `exhausted` and workers are evicted.
+**Shed order in famine:** scout → quarryman → woodcutter → hunter → fisher → farmer. Food producers protected last; between food jobs, farmers (lowest-variance, sustainable) are the last to go.
 
-**Grass fertility** (v0.2.3). Each grass tile rolls `fertility: 0 | 1` at generation (`FERTILE_GRASS_CHANCE = 0.3`). Fertile tiles add +1 to per-farmer yield. Visible on discovery (tile info panel + a yellow-green visual marker). The starter town is guaranteed at least one fertile grass tile within `BASE_REACH` (2) via `ensureFertileNearTown` — a bad roll can never leave the player on barren soil alone.
+**Hidden reserves.** Forest reserve 30–120, stone 60–240. Invisible to the player — surprise exhaustion is for hunters and quarrymen only; woodcutters work a forest indefinitely.
 
-Balance intent: a farmer on normal grass produces exactly as much as an adult eats (2), so farming on baseline grass is break-even. Surplus comes from **fertile tiles + children (who eat half) + events**. Scouting for fertile land is therefore a real strategic driver, not just a cap-expansion lever.
+**Grass fertility** (`FERTILE_GRASS_CHANCE = 0.3`): each grass tile rolls `fertility: 0 | 1` at generation. +1 food/farmer on fertile tiles. Visible on discovery. `ensureFertileNearTown` guarantees at least one fertile grass tile within `BASE_REACH` — a bad roll can't leave the player barren.
 
-### Capacity
+**Rivers:** five tiles threaded through the island. Any grass tile within Chebyshev-1 of a river is set fertile via `applyRiverFertility` at build time. Rivers themselves are workable by fishers (capacity 1–2). Keep `applyRiverFertility` as a post-tile-creation sweep — don't bolt conditions on.
 
-Each workable tile has a random `capacity` (grass 2–8, forest 2–6, stone 1–4) — the max workers it can host. Capacity is visible to the player once the tile is discovered.
+**Capacity.** Random per tile (grass 2–8, forest 2–6, stone 1–4, river 1–2). Visible on discovery.
 
-### Reach
+**Reach.** A tile is workable if it's within Chebyshev distance `BASE_REACH = 2` of the town, OR within `WORKED_REACH = 1` of any `worked` or road tile. Working the edge of reach extends reach by one — visible territorial sprawl. Each tile = ~10 hectares ≈ 316 m; 2 tiles ≈ 630 m is the honest unassisted walking range. Central mountains are the narrative reason reach needs infrastructure to extend further.
 
-A tile is workable if it's either:
-- within Chebyshev distance `BASE_REACH` (2) of the town, **OR**
-- within Chebyshev distance `WORKED_REACH` (1) of any `worked` tile.
+**Allocator.** `+Farmer` auto-claims the nearest eligible tile. `findEligibleTile` sorts by `tileBonusForJob` DESC (fertility for farmer, fishRichness for fisher, 0 otherwise), then distance ASC. Fertile land wins over nearer baseline grass. `-Farmer` pulls from the **furthest** tile — close-in productive work is preserved. Player never manually places farmers/hunters/fishers/quarrymen/woodcutters.
 
-This creates territorial sprawl — working the edge of your reach extends your reach by one tile. **Roads (v0.4)** will act as permanent reach anchors: a road tile extends reach as if it were a worked tile, without needing a worker on it. This makes roads feel like real infrastructure rather than a speed-up — the natural walking range is tight (2 tiles ≈ 630 m), so roads are necessary to hold territory beyond that.
+**Scouts are separate** — they don't occupy tiles. They reveal frontier tiles at `SCOUT_REVEAL_PER_YEAR × scouts` per turn. `+Scout` is disabled via `hasUndiscoveredFrontier(state.tiles)`. When the last frontier tile is revealed, `turn.ts` auto-retires any active scouts with a chronicle line ("The island is fully mapped.").
 
-**Reach rationale (2026-04-22):** reduced from 3 to 2. Each tile = 10 hectares ≈ 316 m across. 2 tiles ≈ 630 m is an honest unassisted walking/working range for a small settlement. The island's central volcano/mountain range provides the narrative reason why reach doesn't extend further without infrastructure — terrain fragments natural movement.
+**Starter guarantees.** Turn-1 view includes at least one forest tile (`ensureForestNearTown`) and at least one beach/river tile (`ensureFishingNearTown`) — settlers picked a site with game and water.
 
-### Allocator
+### Morale
 
-Player clicks `+Farmer` → the game auto-claims the *nearest* eligible tile (discovered, in-reach, right terrain, has open capacity). `+` disables with a tooltip when nothing is available. `-Farmer` pulls a worker off the *furthest-from-town* tile (preserves close-in productive work).
+Settlement-wide 0–100 stat (`state.morale`, `MORALE_START = 80`). **Lagging indicator — no passive drift; morale only moves on concrete events.** A quiet year leaves it where it is. This is the deliberate anti-Sim-decay-meter choice; don't add passive drain without a fresh conversation.
 
-**Scouts are separate** — they don't occupy tiles, they reveal frontier tiles at `SCOUT_REVEAL_PER_YEAR × scouts` per turn.
+**Deltas (clamped 0–100 via `applyMorale` in state.ts):**
+- Food surplus: +2 / deficit: −3 per year.
+- Famine death: −5 per pop.
+- Old-age death: `MORALE_OLD_AGE_DEATH = 2` per pop, +`MORALE_FOUNDER_EXTRA = 3` per founder.
+- Coming-of-age: +2. Birth: +2.
+- Events: bountiful +5, locusts −4, mild_winter +3, bandits (−7 on death + founder extras, else −2), newcomers +4, forest_fire −3. Scripted waves: +2 per refugee.
+- Long House build: +8 one-time.
 
-### Turn pipeline (src/turn.ts)
+**Gates and biases:**
+- `MORALE_GROWTH_GATE = 50` — births only fire at or above. **Load-bearing effect** — the mechanical consequence the player plans around is "no new babies if morale cracks."
+- `MORALE_ATTRACT_THRESHOLD = 80` — `newcomers` event weight doubles.
+- `MORALE_PREY_THRESHOLD = 30` — `bandits` event weight doubles.
+
+Event biases are flavour; **don't add more gates** (production, build, trade) without a fresh conversation — morale should stay narrow. Extension path for religion/shrines: new helpers or a periodic step in `turn.ts` — don't wire into the events table.
+
+**UI:** "Mood" chip in topbar (`.mood-good` ≥70 green, `.mood-mid` 40–69 gold, `.mood-bad` <40 red) with a tooltip summary.
+
+### Rescue boat
+
+Settlers arrived by ship; it's still there. `state.boat: { status, returnYear, crew }`.
+
+- **Status:** `"docked" | "voyage" | "scrapped" | "lost"`. `"scrapped"` is set by the departure wizard ship-choice; `"lost"` is terminal after all crew die at sea. Don't regress `"lost"` back to `"docked"`.
+- **Dispatch** via `dispatchBoat(state)` — takes 2 idle adults (youngest first, best return odds). Voyage is `BOAT_VOYAGE_YEARS = 2`.
+- **At sea**, crew ages in turn step 0.5. Old-age deaths possible ("passing during the voyage"). They don't eat at home.
+- **Return:** per-crew `effectiveCrewLossChance(state)` roll (see fishing XP), then weighted refugee count from `BOAT_REFUGEE_WEIGHTS = [2,4,3,1]` for 0/1/2/3. Refugees arrive as adults via `makeNewcomerPop()`.
+- **All crew lost** → `status: "lost"`, no refugees, mournful log.
+
+Narrative hook: this is how you find the *other* war survivors Cambrera was founded for. Keep log text thematic.
+
+### Fishing XP
+
+`state.fishingYears` accumulates the current fisher count each turn (yield loop). Cumulative count reduces ship crew-loss chance:
+- `FISHING_XP_GATE = 2`: no bonus below this.
+- `FISHING_XP_PER_STEP = 3`: each additional 3 fisher-years adds 1% reduction.
+- `FISHING_LOSS_MIN = 0.03`: absolute floor on effective crew loss — no amount of fishing makes voyages guaranteed safe.
+- Base `BOAT_CREW_LOSS_CHANCE = 0.10`; bonus caps at −7% (20+ yrs → 3%).
+- `fishingLossReduction(years)` and `effectiveCrewLossChance(state)` exported from turn.ts for the ship panel to surface the current bonus.
+
+Design intent: fishing was previously a pure-food variable source with no other strategic use. The bonus is a maritime-literacy investment; farmers still produce more reliably, so fishing doesn't become the dominant food job.
+
+### Buildings
+
+One-time purchases in `types.ts:BUILDINGS`. `state.buildings: Record<BuildingId, boolean>`. `build()` in turn.ts subtracts resources and flips the flag.
+
+| Building | Cost | Gate | Bonus | Blocks |
+|---|---|---|---|---|
+| Granary | 30 food, 15 wood | — | +0.5 food/farmer/year (floored at harvest) | locusts |
+| Palisade | 20 wood, 25 stone | — | — | bandits |
+| Well | 10 wood, 15 stone | — | — | forest_fire |
+| Hunting Lodge | 10 wood | — | +0.5 food/hunter/year (while forest lasts) | — |
+| Long House | 20 wood, 15 stone | 25 pops | +8 morale (one-time); `newcomers` weight ×3 with attract threshold | — |
+
+**Blocker mechanism:** events carry optional `blockedBy: BuildingId` + `blockedText: string`. `rollEvent` picks normally, then if blocked, returns `blockedText` as a "good" tone log and skips `apply`. The blocked roll still consumes the year's event slot — the "averted" chronicle line *is* the event. Narratively satisfying and keeps the turn pipeline unchanged.
+
+**Granary cost uses food deliberately.** Early-game surplus needs somewhere to go. Palisade + Well use wood+stone, forcing farmers to redeploy as woodcutters/quarrymen.
+
+**Hunting Lodge is a trap.** +0.5 food/hunter only useful while forests last; once game is exhausted, the lodge is dead weight and the 10 wood is gone. Cheap on purpose — the trap only works if the player is tempted.
+
+**One-time purchase, no durability.** Buildings don't wear out. Don't add durability unless raid-escalation specifically targets structures.
+
+**Long House:**
+- Pop gate is **total pops** including children — 25 people is a real community. Adults-only would feel arbitrary.
+- Persists even if population drops below 25 — institutions don't unlearn governance.
+- Unlocks roads and future civic buildings (gate in `canBuild`).
+- Newcomer multiplier stacks with `MORALE_ATTRACT_THRESHOLD` bonus (×3 combined vs ×2 for either alone).
+- Future Frostpunk-style civic decisions should trigger off the Long House as the civic anchor — **don't wire those into the random events table**; add a dedicated decision system.
+
+**Extension path:** new building = add `BuildingId`, append to BUILDINGS, optionally tag an event with `blockedBy` + `blockedText`. No turn.ts or UI churn. Blocking is one possible effect — don't couple the system to it.
+
+### Roads
+
+First tile-targeted construction. Click tile → "Build Road" button in tile info panel. Cost: 2 wood + 5 stone. Instant, permanent.
+
+- Requires **Long House** (civic gate, `canBuildRoad`).
+- Tile must be in reach — no leapfrogging. Keeps road networks legible.
+- Not on water or mountain.
+- Road tiles extend reach identically to worked tiles (`WORKED_REACH`), **without** needing a worker stationed.
+- Town tile auto-roads when Long House is built — the hall and the first paved path are the same civic moment.
+- Render: packed-earth crosshatch drawn over all other tile layers.
+
+**Roads extend reach, not production.** Don't add yield bonuses to road tiles without a fresh design conversation. Cost is stone-heavy because stone is the slowest resource — a long road is a real commitment, not a free terrain hack. Future mountain-pass road will cost significantly more and be the narrative unlock for contact with the far settlement.
+
+### Merchant trade modal
+
+The `merchants` event sets `state.pendingMerchant = true` instead of auto-trading. `maybeShowTradeModal` (called from `redraw()` in main.ts) opens `#trade-overlay`.
+
+**Trade basket.** A single visit can combine sells and buys. `TradeBasket = Record<TradeAction, Record<TradeResource, number>>` in types.ts; `canExecuteTradeBasket`/`executeTradeBasket` in turn.ts. UI is three rows (food/wood/stone) × two steppers (sell/buy). Global cap `TRADE_MAX_PER_VISIT = 5` applies to the **combined** unit count across all six steppers. `+Sell` disables when capped or when player has none; `+Buy` disables when capped or when the basket's net would leave gold negative. Confirm disabled unless basket is non-empty and valid.
+
+**Rates** (`TRADE_RATES`): sell food/wood at 1 gold, stone at 2 gold; buy food/wood at 2 gold, stone at 4 gold. Asymmetric — merchants take their cut. Stone is double because it's the slowest to produce.
+
+**End Year is blocked while `pendingMerchant` is true.** Button re-labels "Merchants waiting…". Keeps chronicle ordering clean; prevents silent skip via End Year spam.
+
+**Per-visit cap is the strategic constraint.** The basket lets the player express a two-sided swap ("sell 3 wood, buy 1 stone") instead of choosing one — but doesn't uncap liquidity. Don't add "trade again."
+
+**Decline costs nothing.** Strategic tension is "spend gold on stone now, or wait for a cheaper visit that may never come."
+
+**Flag-based pause, not async/await.** Keeps the turn pipeline synchronous and saves as plain JSON. If future events need the same semantics (e.g. raid-or-tribute choice), add a similar flag — don't introduce a Promise-driven turn loop.
+
+### Scripted Exarum-survivor waves
+
+Three one-shot narrative events scheduled at `newGame()`. Target years `SCRIPTED_WAVE_TARGETS = [5, 10, 20]` with ±`SCRIPTED_WAVE_JITTER = 3`, ordering enforced by `SCRIPTED_WAVE_MIN_GAP = 3`. Fire-years live on `state.scriptedWaves: ScriptedWave[]`.
+
+At turn pipeline step 4, if a wave's year matches and `fired === false`, it **replaces** the random event roll, spawns `SCRIPTED_WAVE_REFUGEES = 2` adults, and writes a lore-length log entry. Narrative in `events.ts:SCRIPTED_WAVE_TEXT` — don't drift from the canonical names in `memory/project_cambrera_lore.md` (Exarum, Klon, Destum, Cuarecam, Duras/Vizqe/Drazna/Harab/Bludris, Bura, Captain Amezcua, draconians).
+
+- Waves **replace**, not augment — avoids mixing "survivors + locusts" in one chronicle turn.
+- Refugee count (2 adults) matches the random `newcomers` event so the arc doesn't secretly snowball the economy.
+- `fired` flag (not a cleared array) is required because save/load must persist which played.
+- Extension: new scripted event = new `ScriptedWaveId`, append to targets, write text. No turn.ts or state.ts churn.
+
+### Departure wizard
+
+Six-step pre-game wizard. `state.departure: DepartureChoices` persists the picks for future event hooks. Narrative copy in `ui.ts:WIZARD_NARRATIVES`.
+
+| Step | Choices | Effect |
+|------|---------|--------|
+| 1 What did you bring? | seeds / fishing / provisions | Resource bonus |
+| 2 Who came with you? | craftsman (+6w +4s) / wisewoman (+2f +5 morale) / nobody (+5f) | — |
+| 3 Departure timing | prepared (+5w +3s) / hasty | Sets `pursuedRisk` if prepared |
+| 4 The alarm bells | grab (+7f) / cast off | Sets `pursuedRisk` if grab |
+| 5 The ship | keep / salvage (+12w, scrapped) / burn (+4w, scrapped, clears pursuit) | Sets `Boat.status = "scrapped"` |
+| 6 Where do you land? | western_shore (6,6) / southern_cove (6,10) / northern_strand (7,3) | `buildIsland(landingPos)` |
+
+**Bandit pursuit:** `isPursued(state)` true if `(timing===prepared OR alarm===grab) AND shipFate!==burn`. Doubles bandit weight years 1–5. Burning the ship clears the trail narrative-mechanically.
+
+`DepartureChoices` is intentionally open-ended — future hooks (e.g. wisewoman tempering certain events) read from it without data-shape churn.
+
+### Intro papyrus
+
+`#intro-overlay` in index.html is a parchment overlay with the Cambrera backstory. Hidden by default (`hidden` class). `maybeShowIntro()` in ui.ts un-hides it on first load and after New Game, unless `localStorage["isle-of-cambrera-skip-intro"] === "1"`. "Skip on future games" checkbox toggles that key. No game-state impact; CSS-only styling.
+
+### Chronicle (log)
+
+- Newest entry on top (unshift). Feels like a chronicle being written.
+- Entries carry `tone: "neutral" | "good" | "bad"` for CSS styling.
+- `renderLog` brackets consecutive same-year entries in `.year-group` with a `.year-header` ("— Year N —").
+- **Single population tally per turn.** Elder deaths, coming-of-age, and births route through a `tally` object in `endYear` and emit one combined line via `emitPopulationTally`. **Don't fold famine/bandit/event deaths into the tally** — those belong to the event that caused them and want their own tonal emphasis. The tally is for the quiet turning of the year.
+
+## Turn pipeline (src/turn.ts)
 
 ```
-0.   Age all pops; old-age deaths; log coming-of-age transitions; reconcile
+0.   Age all pops; old-age deaths; log coming-of-age; reconcile
 0.5  Boat — age crew; resolve voyage if returnYear reached (crew loss, refugee roll)
-1.   Collect yields from worked tiles; drain reserves; exhaust depleted tiles
-2.   Scouts reveal frontier
+1.   Collect yields from worked tiles; drain reserves; exhaust depleted tiles;
+     accumulate fishingYears
+2.   Scouts reveal frontier; auto-retire scouts if no frontier remains
 3.   Advance tile states (cultivating→worked, worked→fallow, fallow→wild)
-4.   Random event (can change food, pops, or other resources)
-5.   Food consumption; famine kills pops (youngest first) if stockpile can't cover it
-6.   Reconcile allocation (shed workers if adults died, scout first, then furthest tiles)
-7.   Growth check (food ≥ pop × 3 → +1 baby at age 0)
-8.   Game-over check; year++
+4.   Scripted wave (if due) OR random event
+5.   Food consumption; famine kills pops (youngest first)
+6.   Reconcile allocation (shed workers if adults died — scout first, then furthest)
+7.   Growth check (food ≥ pop × 3 AND morale ≥ MORALE_GROWTH_GATE → +1 baby)
+8.   Emit population tally; game-over check; year++
 ```
 
 **Order matters.**
-- Step 0 is first so elder deaths and coming-of-age both happen before anything depending on adult count (yields, reconcile).
-- Step 0.5 handles the boat after home aging but before yields. Returning crew + refugees land in `state.pops` in time to be counted for this turn's food consumption (step 5), so a marginal settlement can't dodge the cost of feeding new mouths by timing the return.
-- State advance is step 3 so cultivating tiles don't yield this turn but will next turn.
-- Event is step 4 — **before** consumption — so food-affecting events (locusts, bountiful, etc.) settle into the stockpile before the famine check, keeping the end-of-turn food display truthful.
-- Reconcile runs both at step 0 (for elders) and step 6 (for famine victims) so a single cleanup pass handles each pop delta.
+- Step 0 first: elder deaths + coming-of-age happen before anything depending on adult count (yields, reconcile).
+- Step 0.5: boat resolves after home aging but before yields, so returning crew + refugees count toward this turn's food consumption. A marginal settlement can't dodge feeding new mouths by timing the return.
+- Step 3 before 4: cultivating tiles don't yield this turn but will next turn.
+- Step 4 **before** step 5: food-affecting events (locusts, bountiful) settle into the stockpile before the famine check, keeping the end-of-turn food display truthful.
+- Reconcile runs at step 0 (elders) and step 6 (famine) so one cleanup pass handles each pop delta.
 
 ## File-by-file
 
 ```
-index.html          Topbar, canvas, sidebar (allocator / tile info / log / buttons).
+index.html          Topbar, canvas, sidebar (allocator / tile info / log / buttons),
+                    intro overlay, departure wizard, trade modal.
 src/main.ts         Entry. Loads save or newGame, wires click handler, calls redraw().
-src/types.ts        All shared types + tuning constants. Tune numbers here first —
-                    capacity ranges, reserve ranges, reach, yield rates, timing.
-src/map.ts          ISLAND[] hand-crafted string map. Capacity/reserve generated
-                    randomly per tile on buildIsland(). isInReach / reachableTiles /
-                    findEligibleTile / findWorkerToRemove / totalReachableCapacity
-                    power the allocator.
-src/state.ts        newGame() initial state. Starter workers get placed via
-                    placeStarterWorker() directly into `worked` state — they bypass
-                    the cultivation year (narratively, settlers prepared ground on
-                    arrival). jobCount / idleCount / assignedTotal are summary helpers.
-src/events.ts       EventDef table with weighted random roll. Each event mutates
-                    state and returns a LogEntry. Add new events here.
-src/turn.ts         endYear() is the single turn-resolution pipeline. assignWorker /
-                    unassignWorker handle state transitions when the player clicks.
-                    reconcileAllocation() is called after famine + events.
-src/render.ts       Canvas renderer. baseColor(tile) picks the background based on
-                    terrain × state. drawWorkedDecor / drawExhaustedDecor handle the
-                    new visual states. drawScaffolding overlays cultivating tiles;
-                    drawWeeds overlays fallow tiles.
-src/ui.ts           DOM overlay. renderUI() rebuilds topbar, allocator, tile info,
-                    log on each state change. attachCanvasClick handles tile selection.
-                    Disable logic for + buttons reads findEligibleTile.
+src/types.ts        All shared types + tuning constants. Tune numbers here first.
+                    VERSION + AUTHOR live here too.
+src/map.ts          ISLAND[] hand-crafted string map. Capacity/reserve rolled per
+                    tile on buildIsland(landingPos). isInReach / reachableTiles /
+                    findEligibleTile / findWorkerToRemove / hasUndiscoveredFrontier.
+src/state.ts        newGame(departure) initial state. placeStarterWorker() drops
+                    starters directly into `worked`. applyMorale clamps 0–100.
+                    jobCount / idleCount / assignedTotal / projectedYields summaries.
+src/events.ts       EventDef table + weighted roll. adjustedWeight applies morale,
+                    Long House, pursuit, and ruins-gating biases. SCRIPTED_WAVE_TEXT
+                    holds narrative copy. isPursued() reads departure choices.
+src/turn.ts         endYear() is the turn pipeline. assignWorker / unassignWorker
+                    handle state transitions. reconcileAllocation after famine/events.
+                    Trade basket API; fishingLossReduction / effectiveCrewLossChance.
+src/render.ts       Canvas renderer. baseColor per terrain × state. Decor layers
+                    for cultivating/worked/fallow/exhausted; river shimmer; foam
+                    flecks for fish-rich water; road crosshatch over everything.
+src/ui.ts           DOM overlay. renderUI() rebuilds topbar/allocator/tile info/log.
+                    Intro + departure wizard + trade basket overlays.
+                    renderStaticCredits sets version chip + byline.
 src/style.css       Retro palette: muted browns, gold accents, monospace font.
 ```
 
 ## Key design decisions (and why)
 
-- **Single-file hand-crafted map**, not procedural, because the focus is "does the loop feel fun" over replayability. Procedural is a later version.
-- **Variable tile capacity** (Master of Orion–style): some tiles are rich, some are poor. Poor tiles should remain useful in later versions (military outposts, watchtowers) — don't design mechanics that make low-capacity land economically worthless.
-- **Hidden reserves for hunters and quarrymen**, not for woodcutters: the player knows tile capacity ("5 workers max") but not the game population. Loggers work indefinitely; surprise exhaustion is for hunters and quarrymen only.
-- **Reach via worked-tile adjacency** creates visible territorial sprawl without needing a roads system yet.
-- **Starter workers skip cultivation** (placed directly in `worked` state) — year 1 shouldn't be a punishing zero-yield turn.
-- **Newest log entry on top** (unshift). Feels like a chronicle being written.
+- **Single-file hand-crafted map**, not procedural. Focus is "does the loop feel fun" over replayability. Procedural is a later version.
+- **Variable tile capacity** (Master of Orion–style): poor tiles should remain useful in later versions (outposts, watchtowers). Don't design mechanics that make low-capacity land economically worthless.
+- **Hidden reserves for hunters and quarrymen**, not woodcutters: capacity is known ("5 workers max"); game population is not. Surprise exhaustion is for hunters and quarrymen only.
+- **Reach via worked-tile adjacency + roads** creates visible territorial sprawl without needing a full district system.
+- **Starter workers skip cultivation.** Year 1 shouldn't be a punishing zero-yield turn.
 - **Furthest-tile-first shed order** preserves close-in productive work during famine. Close tiles = your real economy.
-- **Growth rule: food ≥ pop × 3 → +1 pop.** Requires 1.5 years of food reserve — prevents runaway growth while keeping growth achievable. A newborn is a 4-year productivity debt; the threshold has to be generous enough that the debt is bearable.
-- **Pops age in-game instead of being a counter.** Aging creates the food-priority pressure Vicente specifically asked for: babies don't pay back immediately, so growth has to be earned. Lifespan variance (8–12) means pops don't all die in lockstep.
-- **Famine kills children first, bandits kill adults.** Children cost less food but no labor (yet); losing one is future debt, not present crisis. Adults are the current economy; bandits taking one bites immediately.
-- **Starter lifespan floor (age + 6).** After v0.2.1 playtest showed a whole starter cohort dying Y3–Y5 before the first baby could mature, `makeStarterPop` now guarantees each starter has ≥ 6 years left. Preserves randomness without permitting total collapse by bad roll. Don't remove this floor when tuning other lifespan numbers.
-- **Rescue ship as the refugee spigot.** Newcomers-via-event is a random trickle; the ship lets the player *choose* to invest 2 adults + 2 years for a 55% chance of a refugee (based on BOAT_REFUGEE_WEIGHTS). This is the player-agency version of "who gets saved from the old war," consistent with the Cambrera framing.
-- **Rate indicators in the topbar** (`projectedYields` in state.ts). Food shows net (prod − cons); wood/stone show gross production. Projection counts *both worked and cultivating* tiles so the UI responds immediately when the player clicks + (treating the projection as steady-state capacity, not this-year's realized yield). Doesn't account for reserves running out or events — it's a capacity estimate.
-- **Farming is break-even on baseline grass; surplus requires fertile tiles.** Yield per farmer = 2, consumption per adult = 2 — deliberately tuned so flat grassland can sustain but not grow a settlement. Vicente's v0.2.2 playtest made this obvious (9 farmers, 0 surplus). Growth pressure comes from finding fertile tiles (+1/farmer) via scouting. Don't close this gap by bumping base farmer yield; keep the "good land is a real resource" dynamic intact.
-- **No engine** because a turn-based tile game is ~70% UI and ~30% static rendering. An engine would add learning curve and a magic layer without earning its weight.
+- **Growth rule: food ≥ pop × 3 AND morale ≥ 50 → +1 pop.** Requires 1.5 years of food reserve. A newborn is a 4-year productivity debt; the threshold has to be generous enough that the debt is bearable.
+- **Pops age instead of being a counter.** Aging creates the food-priority pressure — babies don't pay back immediately, so growth has to be earned.
+- **Famine kills children first, bandits kill adults.** Children are future debt; adults are the current economy.
+- **Starter lifespan floor (age + 6).** Preserves randomness without permitting total collapse by bad roll.
+- **Rescue ship as the refugee spigot.** Newcomers-via-event is a random trickle; the ship lets the player *choose* to invest 2 adults + 2 years.
+- **Rate indicators in the topbar** (`projectedYields` in state.ts). Food net (prod − cons), wood/stone gross. Counts worked + cultivating tiles so UI responds immediately to +button clicks. Doesn't account for reserves running out or events — capacity estimate.
+- **Farming is break-even on baseline grass; surplus requires fertile tiles.** Don't close this gap by bumping farmer yield; keep the "good land is a real resource" dynamic intact.
+- **No engine.** Turn-based tile game is ~70% UI, ~30% static rendering. An engine would add learning curve without earning its weight.
 
 ## Conventions
 
-- No comments unless the WHY is non-obvious. Identifier names should carry the WHAT.
+- No comments unless the WHY is non-obvious. Identifier names carry the WHAT.
 - Prefer editing `types.ts` constants over hardcoding numbers elsewhere.
-- Canvas coords are pixel-based (tile at (x,y) is drawn at `x*TILE_SIZE, y*TILE_SIZE`).
-- Log entries always carry a `tone: "neutral" | "good" | "bad"` for CSS styling.
-- When adding a random event, pick a weight proportional to how often you want to see it.
-- When adding mechanics that interact with tiles, respect the state machine — always transition through `cultivating` / `fallow`, never skip.
+- Canvas coords are pixel-based — tile at (x,y) draws at `x*TILE_SIZE, y*TILE_SIZE`.
+- When adding an event, weight it proportional to desired frequency.
+- When adding tile-interacting mechanics, respect the state machine — never skip `cultivating`/`fallow`.
+- Every state-shape change bumps `SAVE_KEY`. Old saves fail loud → `newGame()`.
 
 ## Deferred work (roadmap)
 
-See README.md → *Deferred to later versions* and *Roadmap*. Don't add any of these without the user's say-so — scope discipline is deliberate.
+See README.md → *Roadmap*, and open GitHub issues on `vicosurge/survival-civ-game` for scheduled items. Don't add roadmap work without the user's say-so — scope discipline is deliberate.
 
 ## Memory
 
 The user's memory system at `/root/.claude/projects/-mnt-backups-civ-game/memory/` holds:
 - **project_civ_game.md** — full design brief and locked-in decisions
 - **user_vicente.md** — how Vicente prefers to collaborate
-- **feedback_maintain_docs.md** — keep README.md and CLAUDE.md current as development proceeds (that's what you're reading)
-- **project_playtest_notes.md** — running log of Vicente's playtest feedback and feature asks
+- **feedback_maintain_docs.md** — keep README.md and CLAUDE.md current as development proceeds
+- **project_playtest_notes.md** — running log of playtest feedback and feature asks
+- **project_cambrera_lore.md** — canonical names, places, factions
 
 Before making nontrivial changes, skim those. Update CLAUDE.md and README.md in the same turn as any notable change.

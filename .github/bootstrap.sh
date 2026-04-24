@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
-# One-shot repo setup: labels, milestones, and initial issues for Isle of Cambrera.
+# Repo bootstrap + reusable issue-filing helper for Isle of Cambrera.
 #
 # Prerequisites:
 #   brew install gh            # or see https://cli.github.com/
-#   gh auth login              # authenticate against GitHub
+#   gh auth login              # PAT needs `repo` + `project` scopes
+#
+# Structure:
+#   1. Labels          — idempotent, safe to re-run (creates missing, updates existing)
+#   2. file_issue()    — reusable helper: creates an issue, links it to the board
+#   3. Initial issues  — ONE-SHOT, guarded. Already filed as #2–#8.
 #
 # Usage:
-#   cd /path/to/survival-civ-game
-#   bash .github/bootstrap.sh
+#   bash .github/bootstrap.sh                    # syncs labels; skips issue filing
+#   FORCE_BOOTSTRAP=1 bash .github/bootstrap.sh  # re-files the initial 7 issues (duplicates!)
 #
-# Safe to re-run: label/milestone creates fail soft if they already exist.
-# Issues WILL be duplicated on re-run, so only run the "Initial issues" section once.
+# Reusing for a future feedback batch:
+#   1. Copy this file to .github/batch-<yyyy-mm-dd>.sh
+#   2. Delete the labels section + the FORCE_BOOTSTRAP guard
+#   3. Replace the file_issue calls with your new batch
+#   4. Run once, then delete the batch script (or add its own guard)
 
 set -euo pipefail
 
@@ -37,44 +45,42 @@ create_label deferred     cccccc "Acknowledged — not scheduled yet"
 create_label needs-info   d876e3 "Reporter input needed before we can act"
 create_label playtest     f9d0c4 "Raw playtest session feedback"
 
-# ─── Milestones ────────────────────────────────────────────────────────────────
+# ─── file_issue helper (reusable) ─────────────────────────────────────────────
+# Creates an issue on REPO, links it to the Cambrera Main Board as a card with
+# a live discussion thread. Requires PAT `project` scope (not just `read:project`).
 
-create_milestone() {
-  local title="$1" description="$2"
-  # Milestones API: POST /repos/{owner}/{repo}/milestones. Idempotent by title.
-  if ! gh api "repos/$REPO/milestones" --jq '.[].title' | grep -Fxq "$title"; then
-    gh api "repos/$REPO/milestones" \
-      -f title="$title" \
-      -f description="$description" \
-      -f state=open \
-      > /dev/null
-    echo "  created milestone: $title"
-  else
-    echo "  milestone exists: $title"
-  fi
-}
-
-echo "Milestones:"
-create_milestone "v0.5" "Next version. Mid-game balance, narrative hooks, playtest-driven fixes."
-create_milestone "Backlog" "Acknowledged ideas without a target version yet."
-
-# ─── Initial issues ────────────────────────────────────────────────────────────
-# Run ONLY ONCE. If you re-run this script, comment this section out.
+PROJECT_OWNER="vicosurge"
+PROJECT_NUMBER="1"
 
 file_issue() {
-  local title="$1" milestone="$2" labels="$3" body="$4"
-  gh issue create --repo "$REPO" \
+  local title="$1" labels="$2" body="$3"
+  local url
+  url=$(gh issue create --repo "$REPO" \
     --title "$title" \
-    --milestone "$milestone" \
     --label "$labels" \
-    --body "$body"
+    --body "$body")
+  echo "  $url"
+  gh project item-add "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --url "$url" > /dev/null \
+    && echo "    → added to board" \
+    || echo "    ! could not add to board (check PAT has 'project' scope)"
 }
+
+echo "Labels synced."
+
+# ─── Initial issues — ONE-SHOT ────────────────────────────────────────────────
+# Already filed as #2–#8. Guard prevents accidental re-run (which would duplicate
+# all seven). To deliberately re-file (e.g., on a fork): FORCE_BOOTSTRAP=1.
+
+if [[ "${FORCE_BOOTSTRAP:-0}" != "1" ]]; then
+  echo "Initial issues already filed. Re-run with FORCE_BOOTSTRAP=1 to duplicate."
+  exit 0
+fi
 
 echo ""
 echo "Filing initial issues..."
 
 file_issue "Idle adults should nudge birth rate, capped" \
-  "v0.5" "feature,balance" \
+  "feature,balance" \
 "From playtester feedback: \"Does leaving adults idle alter the number of children born?\"
 
 Current behaviour: no — births are gated purely by \`food >= pop * 3\` and morale. Idle adults have no direct effect.
@@ -90,7 +96,7 @@ Design intent to preserve:
 - Growth still needs earned food surplus. Idle bonus is a tilt, not a shortcut."
 
 file_issue "25-pop Long House gate feels grindy in long sessions" \
-  "v0.5" "balance,playtest" \
+  "balance,playtest" \
 "Playtester hit 307 turns bouncing between 11–19 population, never reaching the 25-pop Long House gate.
 
 Possible levers:
@@ -103,7 +109,7 @@ Possible levers:
 Needs a playtest after each lever to check it doesn't collapse into easy-mode."
 
 file_issue "Second rescue boat / fleet option" \
-  "v0.5" "feature,balance" \
+  "feature,balance" \
 "Playtester feedback: \"You only have one boat, but why not two?\"
 
 Ties to the Long House 25-pop grind (voyages are the main refugee spigot). A second boat would double the rate of inbound newcomers and give the player a second investment choice (who crews it).
@@ -116,7 +122,7 @@ Design questions:
 Should stay thematically grounded — a fleet of ships feels off for a refugee camp, two boats feels right."
 
 file_issue "Seasons: four turns per year instead of one" \
-  "Backlog" "feature,deferred" \
+  "feature,deferred" \
 "Playtester feedback: \"One turn is one year? They don't do much in a year eh. I think seasons is a more appropriate turn length, gives an urgency to farming in the spring/summer before winter.\"
 
 Already noted in CLAUDE.md as a planned later feature. Deferred because it's a full pipeline rewrite:
@@ -128,14 +134,14 @@ Already noted in CLAUDE.md as a planned later feature. Deferred because it's a f
 Don't tackle until mid-game (combat) is more settled."
 
 file_issue "Long House unlocks Frostpunk-style civic decisions" \
-  "Backlog" "feature,deferred" \
+  "feature,deferred" \
 "CLAUDE.md notes this as a future hook tied to the Long House:
 \"Future Frostpunk-style decisions (who leads, what values Cambrera holds) should be triggered by the Long House as the civic anchor.\"
 
 A decision system separate from the random-event weight table — one-shot or scheduled civic choices with durable state effects. Needs design work before implementation."
 
 file_issue "Mountain pass road unlock" \
-  "Backlog" "feature,deferred" \
+  "feature,deferred" \
 "CLAUDE.md notes roads currently can't be built over mountain tiles. A future unlock should let the player construct a mountain pass at significantly higher cost, acting as the narrative moment of contact with settlement(s) on the far side of the range.
 
 Design questions:
@@ -144,7 +150,7 @@ Design questions:
 - Does it unlock a trade route, a new biome, or both?"
 
 file_issue "Hunting Lodge — clarify the 'you start with a lodge' confusion" \
-  "Backlog" "needs-info,ux" \
+  "needs-info,ux" \
 "Playtester wrote: \"You start with the hunting lodge, but it isn't super obvious, perhaps set a check for whether the existing hunting lodge is at full capacity and if no then prompt user not to build the hunting lodge.\"
 
 Players do NOT start with a Hunting Lodge — they start with 3 hunters working forest tiles, which provides food without the lodge. The lodge is a +0.5 food/hunter buff available for 10 wood.
