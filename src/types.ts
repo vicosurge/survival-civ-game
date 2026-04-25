@@ -1,4 +1,4 @@
-export const VERSION = "v0.4.4";
+export const VERSION = "v0.5.1";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
@@ -86,11 +86,28 @@ export interface ScriptedWave {
 export type TradeAction = "sell" | "buy";
 export type TradeResource = "food" | "wood" | "stone";
 
-export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "long_house";
+export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "long_house" | "shrine_of_anata";
 
 // Long House civic building requirements and effect.
 export const LONG_HOUSE_POP_GATE = 25;
 export const LONG_HOUSE_MORALE_BONUS = 8;
+
+// Shrine of Anata — first religion hook. Unlocks after enough old-age deaths
+// have accumulated that the village begins to institutionalize grief. Anata
+// governs the whole cycle (birth, growth, end) per lore; her priest is an
+// elder, the oral-tradition keeper. While the shrine stands, the per-death
+// morale penalty is softened (but not erased — loss is still loss).
+export const ANATA_DEATH_TRIGGER = 4;
+export const ANATA_OLD_AGE_MORALE = 1;     // old-age morale penalty while shrine exists (was MORALE_OLD_AGE_DEATH = 2)
+export const ANATA_FOUNDER_EXTRA = 2;      // founder extra while shrine exists (was MORALE_FOUNDER_EXTRA = 3)
+
+// Houses — repeatable post-Long-House building. Pop is hard-capped until a new
+// house is built. Each house also yields a small steady food income from a
+// private garden plot (Ostriv-inspired; future taxation hook lives here).
+export const INITIAL_HUT_CAPACITY = 20;   // starter huts accommodate this many before crowding bites
+export const HOUSE_CAPACITY = 6;          // each new house adds this many to pop capacity
+export const HOUSE_FOOD_YIELD = 2;        // food/year from each house's garden plot
+export const HOUSE_COST = { wood: 8, stone: 3 };
 
 // Road construction cost per tile. Requires Long House + tile in reach.
 export const ROAD_COST = { wood: 2, stone: 5 };
@@ -254,17 +271,17 @@ export interface LandingSpotDef {
 export const LANDING_SPOTS: Record<LandingSpotId, LandingSpotDef> = {
   western_shore: {
     id: "western_shore", name: "Western Shore",
-    bonusText: "Sheltered cove. Forest to the south, stone outcrops inland.",
+    bonusText: "A sheltered cove on the southern side, west of the river's mouth. Forest at your back; stone outcrops where the mountain's roots break through the soil.",
     town: { x: 6, y: 6 },
   },
   southern_cove: {
     id: "southern_cove", name: "Southern Cove",
-    bonusText: "River delta. Fertile floodplain, good fishing — but further from the mountain.",
+    bonusText: "Where the river fans into the sea — the heart of the southern coastal plain. The volcano's old ash has fed this delta for a thousand years. The soil is forgiving.",
     town: { x: 6, y: 10 },
   },
   northern_strand: {
     id: "northern_strand", name: "Northern Strand",
-    bonusText: "Exposed north coast. Dense forest close by, but colder and more isolated.",
+    bonusText: "An exposed strand on the far side of the mountain range, beyond easy reach of the southern coast. Colder, denser forest. Travellers from the old world spoke of another quiet camp on this side — but no one you knew had been.",
     town: { x: 7, y: 3 },
   },
 };
@@ -296,6 +313,8 @@ export interface GameState {
   scriptedWaves: ScriptedWave[];
   pendingMerchant: boolean;  // merchant visit awaiting trade/decline — blocks end-year
   buildings: Record<BuildingId, boolean>;
+  houses: number;              // repeatable dwellings built post-Long-House; raise pop cap + yield garden food
+  oldAgeDeathsTotal: number;   // cumulative old-age deaths over the whole game; gates Shrine of Anata unlock
   departure: DepartureChoices;  // every choice made in the pre-game wizard
   log: LogEntry[];
   gameOver: boolean;
@@ -310,12 +329,22 @@ export const MAP_W = 20;
 export const MAP_H = 15;
 export const TILE_SIZE = 32;
 
-export const ADULT_AGE = 4;
-export const LIFESPAN_RANGE: [number, number] = [10, 15];
-// Starter pops are a spread of adult ages so they don't all die in the same year.
-export const STARTER_AGE_RANGE: [number, number] = [4, 7];
-// Newcomer events arrive as fresh adults partway through life.
-export const NEWCOMER_AGE_RANGE: [number, number] = [4, 7];
+// Three-phase aging. Tuned so lifespan is realistic-ish (30-year average) while
+// preserving old-age deaths as a regular morale beat. Child phase is long —
+// babies take 14 years of food-without-work before they pay back, so growth
+// stays an investment.
+export const ADULT_AGE = 14;              // child < adult
+export const ELDER_AGE = 25;              // adult < elder; elders eat but don't work or reproduce
+export const LIFESPAN_RANGE: [number, number] = [25, 40];
+// Starter adults are young workers — plenty of runway ahead of them.
+export const STARTER_AGE_RANGE: [number, number] = [15, 22];
+// Starter children: under adult_age at game start.
+export const STARTER_CHILD_AGE_RANGE: [number, number] = [0, 4];
+// Floor on starter lifespan (age + N). Guards against a whole-cohort collapse
+// from unlucky rolls — scaled up with the new lifespan range.
+export const STARTER_LIFESPAN_FLOOR_BONUS = 10;
+// Newcomers/refugees arrive as fresh young adults partway through life.
+export const NEWCOMER_AGE_RANGE: [number, number] = [15, 22];
 
 export const FOOD_PER_ADULT = 2;
 export const FOOD_PER_CHILD = 1;
@@ -476,9 +505,15 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   long_house: {
     id: "long_house",
     name: "Long House",
-    description: "A great hall where the community gathers to speak and decide together. Raises morale (+8). Word of an organised settlement spreads, drawing more survivors.",
+    description: "A great hall where the community gathers to speak and decide together. Raises morale (+8). Word of an organised settlement spreads, drawing more survivors. Unlocks private houses.",
     cost: { wood: 20, stone: 15 },
+  },
+  shrine_of_anata: {
+    id: "shrine_of_anata",
+    name: "Shrine of Anata",
+    description: "A stone cairn to the goddess of life. Pyres replace silent graves, and an elder keeps the names in memory. Old-age losses weigh less on the village.",
+    cost: { wood: 10, stone: 15 },
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v18";
+export const SAVE_KEY = "isle-of-cambrera-save-v19";

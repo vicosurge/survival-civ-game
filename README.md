@@ -10,7 +10,7 @@ The world is low-fantasy: classical creatures exist but magic is fading, and the
 
 ## What it plays like
 
-You land on a small northern island as refugees fleeing a continent-destroying war. Each turn is one year. You allocate a handful of workers across farming, hunting, fishing, woodcutting, quarrying, and scouting; buildings (granary, palisade, well, hunting lodge, long house) give your resource surplus somewhere to go and counter specific threats; your rescue ship can voyage out for two years to bring back survivors. Pops age, fertile tiles matter, morale gates growth, and a chronicle of the years accumulates on the right. There is no hard win condition — the soft goal is becoming a kingdom.
+You land on a small northern island as refugees fleeing a continent-destroying war. Each turn is one year. You allocate a handful of workers across farming, hunting, fishing, woodcutting, quarrying, and scouting; buildings (granary, palisade, well, hunting lodge, long house, shrine of Anata) give your resource surplus somewhere to go and counter specific threats; private houses lift the population cap once the long house stands; your rescue ship can voyage out for two years to bring back survivors. Pops age through child / adult / elder phases, fertile tiles matter, morale gates growth, and a chronicle of the years accumulates on the right. There is no hard win condition — the soft goal is becoming a kingdom.
 
 ## Playing locally
 

@@ -1,8 +1,12 @@
 import { fireScriptedWave, rollEvent } from "./events";
 import { currentWorkers, exploreFrontier, findWorkerToRemove, hasUndiscoveredFrontier, isInReach } from "./map";
-import { adultCount, applyMorale, childCount, idleCount, makeBabyPop, makeNewcomerPop, totalPop } from "./state";
+import { ANATA_BUILD_LINE, ANATA_UNLOCK_LINE, FIRST_HOUSE_LINE, QUARRY_EXHAUSTED_LINE, additionalHouseLine } from "./narratives";
+import { adultCount, applyMorale, childCount, fertileCount, idleCount, makeBabyPop, makeNewcomerPop, popCapacity, totalPop } from "./state";
 import {
   ADULT_AGE,
+  ANATA_DEATH_TRIGGER,
+  ANATA_FOUNDER_EXTRA,
+  ANATA_OLD_AGE_MORALE,
   BOAT_CREW_LOSS_CHANCE,
   BOAT_CREW_SIZE,
   BOAT_REFUGEE_WEIGHTS,
@@ -19,6 +23,8 @@ import {
   FOOD_PER_ADULT,
   FOOD_PER_CHILD,
   GameState,
+  HOUSE_COST,
+  HOUSE_FOOD_YIELD,
   HUNTING_LODGE_HUNTER_BONUS,
   Job,
   LogEntry,
@@ -72,16 +78,25 @@ export function endYear(state: GameState): void {
     return true;
   });
   const childrenAfter = childCount(state);
-  // Lifespans are ≥ 8 and children are <4, so no child ever dies of old age —
+  // Lifespans are ≥ 25 and children are <14, so no child dies of old age —
   // any drop in child count is purely coming-of-age.
   tally.comingOfAge = childrenBefore - childrenAfter;
 
   if (tally.oldAgeDeaths > 0) {
+    const shrined = state.buildings.shrine_of_anata;
+    const perDeath = shrined ? ANATA_OLD_AGE_MORALE : MORALE_OLD_AGE_DEATH;
+    const founderExtra = shrined ? ANATA_FOUNDER_EXTRA : MORALE_FOUNDER_EXTRA;
     applyMorale(
       state,
-      -(tally.oldAgeDeaths * MORALE_OLD_AGE_DEATH
-        + tally.founderOldAgeDeaths * MORALE_FOUNDER_EXTRA),
+      -(tally.oldAgeDeaths * perDeath + tally.founderOldAgeDeaths * founderExtra),
     );
+    const hadUnlocked = state.oldAgeDeathsTotal >= ANATA_DEATH_TRIGGER;
+    state.oldAgeDeathsTotal += tally.oldAgeDeaths;
+    if (!hadUnlocked
+        && !state.buildings.shrine_of_anata
+        && state.oldAgeDeathsTotal >= ANATA_DEATH_TRIGGER) {
+      state.log.unshift({ year, text: ANATA_UNLOCK_LINE, tone: "neutral" });
+    }
   }
   if (tally.comingOfAge > 0) {
     applyMorale(state, 2 * tally.comingOfAge);
@@ -118,6 +133,7 @@ export function endYear(state: GameState): void {
   let foodGain = 0, woodGain = 0, stoneGain = 0;
   let fisherCount = 0;
   const exhaustionNotes: string[] = [];
+  let quarriesExhausted = 0;
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const t = state.tiles[y][x];
@@ -153,7 +169,7 @@ export function endYear(state: GameState): void {
           t.state = "exhausted";
           t.workers = 0;
           t.yearsInState = 0;
-          exhaustionNotes.push(`a quarry`);
+          quarriesExhausted += 1;
         }
       } else if (t.terrain === "beach" || t.terrain === "river") {
         // Variable catch per worker — the flavour mechanic. Baseline waters
@@ -167,6 +183,8 @@ export function endYear(state: GameState): void {
       }
     }
   }
+  const houseFood = state.houses * HOUSE_FOOD_YIELD;
+  foodGain += houseFood;
   foodGain = Math.floor(foodGain);
   state.food += foodGain;
   state.wood += woodGain;
@@ -208,6 +226,9 @@ export function endYear(state: GameState): void {
       text: `Workers abandon ${note} — nothing left to take.`,
       tone: "bad",
     });
+  }
+  for (let i = 0; i < quarriesExhausted; i++) {
+    state.log.unshift({ year, text: QUARRY_EXHAUSTED_LINE, tone: "bad" });
   }
 
   // 3. Advance tile states AFTER yields (so cultivation doesn't count this year).
@@ -302,10 +323,15 @@ export function endYear(state: GameState): void {
   // 6. Reconcile assignments with current adult population.
   reconcileAllocation(state);
 
-  // 7. Growth — need 1.5 years of food reserve per pop, and morale above the
-  //    growth gate. Low morale means no new babies this year.
+  // 7. Growth — need 1.5 years of food reserve per pop, morale above the growth
+  //    gate, and a home to put the newborn in. Low morale, empty larder, or a
+  //    full settlement all stop births. Pop cap is starter huts (20) plus each
+  //    built house (6 each); the cap is hard — babies aren't born without room.
+  //    Newcomers/refugees arrive regardless, so pop can exceed cap; only births
+  //    are gated.
   if (
     totalPop(state) > 0 &&
+    totalPop(state) < popCapacity(state) &&
     state.food >= totalPop(state) * 3 &&
     state.morale >= MORALE_GROWTH_GATE
   ) {
@@ -371,10 +397,11 @@ function emitPopulationTally(state: GameState, year: number, t: PopTally): void 
   });
 }
 
-// Shed workers until assigned total ≤ adult count. Scouts first (most flexible),
+// Shed workers until assigned total ≤ fertile adult count. Elders are past
+// working age — they don't count as labor supply. Scouts first (most flexible),
 // then quarryman/woodcutter/hunter/fisher/farmer from furthest-from-town tiles.
 function reconcileAllocation(state: GameState): void {
-  const adults = adultCount(state);
+  const fertile = fertileCount(state);
   let totalAssigned =
     state.scouts +
     currentWorkers(state, "farmer") +
@@ -382,7 +409,7 @@ function reconcileAllocation(state: GameState): void {
     currentWorkers(state, "quarryman") +
     currentWorkers(state, "hunter") +
     currentWorkers(state, "fisher");
-  let over = totalAssigned - adults;
+  let over = totalAssigned - fertile;
   if (over <= 0) return;
 
   const scoutShed = Math.min(over, state.scouts);
@@ -490,16 +517,30 @@ export function declineTrade(state: GameState): LogEntry {
   };
 }
 
-export function canBuild(state: GameState, id: BuildingId): boolean {
-  if (state.gameOver) return false;
-  if (state.buildings[id]) return false;
-  if (id === "long_house" && state.pops.length < LONG_HOUSE_POP_GATE) return false;
+// Why a build is gated, or null if it's buildable. Used by canBuild *and* by
+// the UI to show a specific tooltip on a disabled button (fixes #26 — disabled
+// buttons used to be silent about what you needed).
+export function buildBlockerReason(state: GameState, id: BuildingId): string | null {
+  if (state.gameOver) return "Game over.";
+  if (state.buildings[id]) return "Already built.";
+  if (id === "long_house" && state.pops.length < LONG_HOUSE_POP_GATE) {
+    return `Requires ${LONG_HOUSE_POP_GATE} people (${state.pops.length} now).`;
+  }
+  if (id === "shrine_of_anata" && state.oldAgeDeathsTotal < ANATA_DEATH_TRIGGER) {
+    return `Needs ${ANATA_DEATH_TRIGGER} elders to have passed (${state.oldAgeDeathsTotal} so far).`;
+  }
   const cost = BUILDINGS[id].cost;
-  if ((cost.food ?? 0) > state.food) return false;
-  if ((cost.wood ?? 0) > state.wood) return false;
-  if ((cost.stone ?? 0) > state.stone) return false;
-  if ((cost.gold ?? 0) > state.gold) return false;
-  return true;
+  const short: string[] = [];
+  if ((cost.food ?? 0) > state.food) short.push(`${(cost.food ?? 0) - state.food} food`);
+  if ((cost.wood ?? 0) > state.wood) short.push(`${(cost.wood ?? 0) - state.wood} wood`);
+  if ((cost.stone ?? 0) > state.stone) short.push(`${(cost.stone ?? 0) - state.stone} stone`);
+  if ((cost.gold ?? 0) > state.gold) short.push(`${(cost.gold ?? 0) - state.gold} gold`);
+  if (short.length > 0) return `Short: ${short.join(", ")}.`;
+  return null;
+}
+
+export function canBuild(state: GameState, id: BuildingId): boolean {
+  return buildBlockerReason(state, id) === null;
 }
 
 export function build(state: GameState, id: BuildingId): void {
@@ -515,11 +556,39 @@ export function build(state: GameState, id: BuildingId): void {
     applyMorale(state, LONG_HOUSE_MORALE_BONUS);
     state.tiles[state.town.y][state.town.x].road = true;
   }
+  if (id === "shrine_of_anata") {
+    state.log.unshift({ year: state.year, text: ANATA_BUILD_LINE, tone: "good" });
+    return;
+  }
   state.log.unshift({
     year: state.year,
     text: `${def.name} complete — ${def.description}`,
     tone: "good",
   });
+}
+
+// Houses are repeatable, so they live outside the one-time BUILDINGS flags.
+export function houseBlockerReason(state: GameState): string | null {
+  if (state.gameOver) return "Game over.";
+  if (!state.buildings.long_house) return "Requires the Long House.";
+  const short: string[] = [];
+  if (HOUSE_COST.wood > state.wood) short.push(`${HOUSE_COST.wood - state.wood} wood`);
+  if (HOUSE_COST.stone > state.stone) short.push(`${HOUSE_COST.stone - state.stone} stone`);
+  if (short.length > 0) return `Short: ${short.join(", ")}.`;
+  return null;
+}
+
+export function canBuildHouse(state: GameState): boolean {
+  return houseBlockerReason(state) === null;
+}
+
+export function buildHouse(state: GameState): void {
+  if (!canBuildHouse(state)) return;
+  state.wood -= HOUSE_COST.wood;
+  state.stone -= HOUSE_COST.stone;
+  state.houses += 1;
+  const text = state.houses === 1 ? FIRST_HOUSE_LINE : additionalHouseLine(state.houses);
+  state.log.unshift({ year: state.year, text, tone: "good" });
 }
 
 export function canBuildRoad(state: GameState, x: number, y: number): boolean {

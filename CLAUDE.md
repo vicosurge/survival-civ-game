@@ -33,7 +33,7 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage saves, single slot. Current key: `isle-of-cambrera-save-v18`. **Bump on any breaking state-shape change.** Old saves must fail loud (parse/validation error → `newGame()`), not load silently with `NaN`/`undefined` fields.
+- localStorage saves, single slot. Current key: `isle-of-cambrera-save-v19`. **Bump on any breaking state-shape change.** Old saves must fail loud (parse/validation error → `newGame()`), not load silently with `NaN`/`undefined` fields.
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
 Version history lives in git log + README. This file describes current state only.
@@ -44,18 +44,29 @@ Version history lives in git log + README. This file describes current state onl
 
 A pop is a `{ age, lifespan, founder? }` record, not a counter. See `Pop` in `types.ts`.
 
-- `ADULT_AGE = 4` — under this, pops can't work and eat less (`FOOD_PER_CHILD = 1` vs `FOOD_PER_ADULT = 2`).
-- `LIFESPAN_RANGE = [10, 15]` — rolled per pop; they die of old age at `age >= lifespan`.
-- `STARTER_AGE_RANGE = [4, 7]` — five starter adults staggered. Lifespan floored at `age + 6` so the founding cohort can't all die before babies mature. **Don't remove this floor** when tuning lifespan.
-- Starter settlement also includes **2 children** (age 0–2) via `makeStarterChild()` for second-generation runway.
-- **Turn-1 allocation is 3 farmers + 1 scout; the 5th adult is intentionally idle.** The player picks where to put the 4th worker.
-- `NEWCOMER_AGE_RANGE = [4, 7]` — newcomers/refugees (event, boat, scripted waves) arrive as adults.
+**Three age phases** (v0.5 — the birth/death wall fix validated via `sim/birth_death_curve.py`):
+
+- **Child** — `age < ADULT_AGE = 14`. Eats `FOOD_PER_CHILD = 1`. Doesn't work, doesn't reproduce.
+- **Adult (fertile)** — `ADULT_AGE <= age < ELDER_AGE = 25`. Eats `FOOD_PER_ADULT = 2`. Works, contributes to growth.
+- **Elder** — `age >= ELDER_AGE`. Eats `FOOD_PER_ADULT = 2`. **Doesn't work, doesn't reproduce.** Still a morale beat when they pass.
+
+Why these numbers: steady-state population under the +1-baby-per-year rule ≈ mean lifespan, so with `LIFESPAN_RANGE = [25, 40]` (mean 32.5) the Long House 25-pop gate becomes a natural mid-game milestone instead of an unreachable wall. Sim in `sim/birth_death_curve.py` confirms 500/500 trials reach 25 by ~year 24. Don't shorten lifespan back to [10,15] territory — it re-pins steady state at 12.5 and breaks the gate.
+
+- `STARTER_AGE_RANGE = [15, 22]` — five starter adults staggered as young workers. Lifespan floored at `age + STARTER_LIFESPAN_FLOOR_BONUS = 10` so the founding cohort can't all die before babies mature. **Don't remove this floor** when tuning lifespan.
+- `STARTER_CHILD_AGE_RANGE = [0, 4]` — two children. Still under `ADULT_AGE = 14`, so there's a long child phase ahead of them.
+- `NEWCOMER_AGE_RANGE = [15, 22]` — newcomers/refugees (event, boat, scripted waves) arrive as fresh young adults.
 - Babies born at age 0 via `makeBabyPop()` when growth fires.
 - **Founder flag is starter-only.** `makeStarterPop`/`makeStarterChild` set `founder: true`. Newcomers, refugees, and babies are **not** founders. Founder death applies `MORALE_FOUNDER_EXTRA = -3` on top of base death morale at three sites: old-age, famine, bandits. One-generation premium that decays naturally as the original band ages out.
 
-**Famine kills the youngest first.** Greedy loop in `endYear` sorts pops by age ascending and pops off while accumulating `FOOD_PER_CHILD`/`FOOD_PER_ADULT` worth of shortfall per death. A dead child is 4 years of future labor lost — delayed productivity debt, not immediate crisis. Keeps food as the perpetual priority during growth bursts.
+**State helpers in `state.ts`:** `isChild`, `isFertile`, `isElder`, plus count functions `childCount` / `fertileCount` / `elderCount`. `adultCount` = `fertileCount + elderCount` (used for food consumption — elders eat like adults). Allocator, idle count, scout cap, and boat dispatch use `fertileCount` — elders aren't labour. **If you add a pop-consuming mechanic**, check which cohort matters: feeding = adults-including-elders, working = fertile-only, growing = fertile-only.
 
-**Bandits kill adults**, not children (defenders fall). `removePops(state, 1, "adult")` in `events.ts`.
+**Famine kills the youngest first.** Greedy loop in `endYear` sorts pops by age ascending and pops off while accumulating `FOOD_PER_CHILD`/`FOOD_PER_ADULT` worth of shortfall per death. A dead child is 14 years of future labor lost — delayed productivity debt, not immediate crisis. Keeps food as the perpetual priority during growth bursts.
+
+**Bandits kill adults**, not children (defenders fall). `removePops(state, 1, "adult")` in `events.ts`. Currently filters on `age >= ADULT_AGE` so elders are eligible too; if that reads wrong at playtest, restrict to fertile adults.
+
+**Growth gate** — a baby is born at end-of-year if *all* of: `pop > 0`, `pop < popCapacity(state)`, `food >= pop × 3`, `morale >= 50`. `popCapacity = INITIAL_HUT_CAPACITY (20) + houses × HOUSE_CAPACITY (6)`. The cap is hard; newcomers/refugees bypass it (you can't turn refugees away) but births don't.
+
+**#21 fix in `projectedYields`:** food consumption uses *next turn's* ages because the pipeline ages everyone in step 0 before eating in step 5. A child aged 3 today eats 2 this turn (age 4 after step 0). Projection sums `futureAge = age + 1`, skipping pops who die of old age that turn. Don't revert to using current ages — the topbar lies otherwise.
 
 ### Tiles — states, yields, reach, allocator
 
@@ -111,7 +122,7 @@ Settlement-wide 0–100 stat (`state.morale`, `MORALE_START = 80`). **Lagging in
 **Deltas (clamped 0–100 via `applyMorale` in state.ts):**
 - Food surplus: +2 / deficit: −3 per year.
 - Famine death: −5 per pop.
-- Old-age death: `MORALE_OLD_AGE_DEATH = 2` per pop, +`MORALE_FOUNDER_EXTRA = 3` per founder.
+- Old-age death: `MORALE_OLD_AGE_DEATH = 2` per pop, +`MORALE_FOUNDER_EXTRA = 3` per founder. **Shrine of Anata softens this** to `ANATA_OLD_AGE_MORALE = 1` / founder extra `ANATA_FOUNDER_EXTRA = 2` once built — pyres and oral recital diffuse the grief without erasing it.
 - Coming-of-age: +2. Birth: +2.
 - Events: bountiful +5, locusts −4, mild_winter +3, bandits (−7 on death + founder extras, else −2), newcomers +4, forest_fire −3. Scripted waves: +2 per refugee.
 - Long House build: +8 one-time.
@@ -158,9 +169,16 @@ One-time purchases in `types.ts:BUILDINGS`. `state.buildings: Record<BuildingId,
 | Palisade | 20 wood, 25 stone | — | — | bandits |
 | Well | 10 wood, 15 stone | — | — | forest_fire |
 | Hunting Lodge | 10 wood | — | +0.5 food/hunter/year (while forest lasts) | — |
-| Long House | 20 wood, 15 stone | 25 pops | +8 morale (one-time); `newcomers` weight ×3 with attract threshold | — |
+| Long House | 20 wood, 15 stone | 25 pops | +8 morale (one-time); `newcomers` weight ×3 with attract threshold; unlocks roads AND houses | — |
+| Shrine of Anata | 10 wood, 15 stone | 4 old-age deaths | Softens old-age morale hit (2→1, founder 3→2) | — |
+
+**Houses are separate** from `BUILDINGS` because they're repeatable. `state.houses: number`, costs 8 wood + 3 stone each, gives +`HOUSE_CAPACITY = 6` pop capacity and +`HOUSE_FOOD_YIELD = 2` food/year from garden plots. Gated on Long House. API is `canBuildHouse`/`buildHouse`/`houseBlockerReason` in turn.ts — deliberately outside the one-time `canBuild`/`build` path. Future hook: taxation (Ostriv-style), not implemented yet.
+
+**Pop cap** (`popCapacity` in state.ts): `INITIAL_HUT_CAPACITY (20) + houses × 6`. Blocks **births only** — newcomers and refugees ignore the cap (you can't turn away people fleeing for their lives). The design arc: starter huts hold the band through year ~15–20; scripted waves and random newcomers push pop over 20 to reach the 25-pop Long House gate; Long House unlocks houses; each house lifts the cap by 6 and adds 2 food/year to offset the tighter child+elder consumption load under extended lifespan.
 
 **Blocker mechanism:** events carry optional `blockedBy: BuildingId` + `blockedText: string`. `rollEvent` picks normally, then if blocked, returns `blockedText` as a "good" tone log and skips `apply`. The blocked roll still consumes the year's event slot — the "averted" chronicle line *is* the event. Narratively satisfying and keeps the turn pipeline unchanged.
+
+**Disabled-button tooltips** (fixes #26): every building button — one-time or house — uses `buildBlockerReason(state, id)` / `houseBlockerReason(state)` to surface *why* it's disabled (pop gate, death trigger, missing resources). Don't add per-building tooltip branches in ui.ts; extend the blocker helpers in turn.ts instead.
 
 **Granary cost uses food deliberately.** Early-game surplus needs somewhere to go. Palisade + Well use wood+stone, forcing farmers to redeploy as woodcutters/quarrymen.
 
@@ -175,7 +193,7 @@ One-time purchases in `types.ts:BUILDINGS`. `state.buildings: Record<BuildingId,
 - Newcomer multiplier stacks with `MORALE_ATTRACT_THRESHOLD` bonus (×3 combined vs ×2 for either alone).
 - Future Frostpunk-style civic decisions should trigger off the Long House as the civic anchor — **don't wire those into the random events table**; add a dedicated decision system.
 
-**Extension path:** new building = add `BuildingId`, append to BUILDINGS, optionally tag an event with `blockedBy` + `blockedText`. No turn.ts or UI churn. Blocking is one possible effect — don't couple the system to it.
+**Extension path:** new building = add `BuildingId`, append to BUILDINGS, optionally tag an event with `blockedBy` + `blockedText`. No turn.ts or UI churn. Blocking is one possible effect — don't couple the system to it. Chronicle lines (unlock, completion) live in `src/narratives.ts` — keep prose out of turn.ts so non-dev editors can tune voice without touching game logic.
 
 ### Roads
 

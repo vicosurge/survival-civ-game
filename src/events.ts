@@ -1,6 +1,7 @@
 import { exploreFrontier, hasUndiscoveredFrontier } from "./map";
 import { applyMorale, makeNewcomerPop } from "./state";
 import {
+  ADULT_AGE,
   ALARM_RESPONSES,
   BANDIT_PURSUIT_YEARS,
   BuildingId,
@@ -97,7 +98,7 @@ const EVENTS: EventDef[] = [
     apply: (s) => {
       const goldLost = Math.min(5, s.gold);
       s.gold -= goldLost;
-      const adults = s.pops.filter((p) => p.age >= 4).length;
+      const adults = s.pops.filter((p) => p.age >= ADULT_AGE).length;
       const lost = adults > 2 ? removePops(s, 1, "adult") : [];
       const founderLost = lost.filter((p) => p.founder).length;
       const moraleLost = lost.length > 0

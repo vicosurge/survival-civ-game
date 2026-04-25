@@ -1,10 +1,12 @@
 import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReach, totalReachableCapacity } from "./map";
-import { adultCount, childCount, idleCount, jobCount, projectedYields, totalPop } from "./state";
+import { JOB_TOOLTIPS } from "./narratives";
+import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, totalPop } from "./state";
 import {
   assignWorker,
   build,
+  buildBlockerReason,
+  buildHouse,
   buildRoad,
-  canBuild,
   canBuildRoad,
   canDispatchBoat,
   canExecuteTradeBasket,
@@ -13,6 +15,7 @@ import {
   effectiveCrewLossChance,
   executeTradeBasket,
   fishingLossReduction,
+  houseBlockerReason,
   unassignWorker,
 } from "./turn";
 import {
@@ -29,12 +32,14 @@ import {
   DepartureChoices,
   DepartureTimingId,
   GameState,
+  HOUSE_CAPACITY,
+  HOUSE_COST,
+  HOUSE_FOOD_YIELD,
   Job,
   JOBS,
   JOB_LABEL,
   LANDING_SPOTS,
   LandingSpotId,
-  LONG_HOUSE_POP_GATE,
   MAP_H,
   MAP_W,
   ORIGINS,
@@ -121,15 +126,15 @@ const WIZARD_NARRATIVES: Record<string, string> = {
   origin:
     "You had only minutes to decide what mattered most. The ship was small, the crossing unknown, and the northern island uncharted. One last thing — what did you bring?",
   companion:
-    "Word had spread that you were leaving. Two people asked to come — strangers, but capable. You had room for one, or neither. [PLACEHOLDER — Vicente to expand]",
+    "Word had spread that you were leaving — the kind of word that moves between cellars and back doors. Two strangers found you in the last hours, both capable, both willing. You had room for one. Perhaps neither, if the food was thinner than you wanted to admit.",
   timing:
     "The ship was loaded, mostly. A few more hours and you could fit another crate of tools, another sack of grain. But you could see lanterns moving on the hill above the village. Stay, or go?",
   alarm:
-    "The bells started at dusk. Three short peals — the signal for fire or worse. You were at the dock. Your ship was ready. Across the square, you could see the cellar door — the winter stores were still inside. [PLACEHOLDER — Vicente to expand]",
+    "The bells started at dusk. Three short peals — the signal for fire or worse. You were at the dock; your ship was ready, the lines about to come off. Across the square, you could see the cellar door — the winter stores were still inside. They would never serve their owners now. The choice was yours, and quick.",
   ship:
-    "Cambrera. The island was smaller than the old charts suggested. After three days offshore, you found a cove and ran the bow into the sand. Now — what happens to the ship? [PLACEHOLDER — Vicente to expand]",
+    "Cambrera. The island was smaller than the old charts had suggested — they were drawn before the war, by sailors who had no reason to lie about its size, only its colour. After three days offshore you found a cove and ran the bow into the sand. The ship had served. Now — what happens to her?",
   landing:
-    "The coastline of Cambrera stretched in both directions. You studied it for a long time. Wherever you beached, that would be home. [PLACEHOLDER — Vicente to expand]",
+    "The coastline of Cambrera stretched in both directions. The mountain at the island's heart rose dark behind the surf — its old volcano dormant for centuries, but the ash that fed the shores still good for the plough. Wherever you beached, that would be home. Where do you put the keel down?",
 };
 
 export function showDepartureWizard(onComplete: (choices: DepartureChoices) => void): void {
@@ -398,10 +403,15 @@ function renderTopbar(state: GameState): void {
   el.innerHTML = "";
   const pop = totalPop(state);
   const kids = childCount(state);
-  const adults = adultCount(state);
+  const fertile = fertileCount(state);
+  const elders = elderCount(state);
+  const cap = popCapacity(state);
+  const popBreakdown = elders > 0
+    ? `${pop}/${cap} (${fertile}A+${elders}E+${kids}C)`
+    : `${pop}/${cap} (${fertile}A+${kids}C)`;
   const yields = projectedYields(state);
   el.append(
-    resChip("Pop", `${pop} (${adults}A+${kids}C)`),
+    resChip("Pop", popBreakdown),
     resChip("Food", state.food, netDelta(yields.food.net)),
     resChip("Wood", state.wood, productionDelta(yields.wood)),
     resChip("Stone", state.stone, productionDelta(yields.stone)),
@@ -445,10 +455,13 @@ function resChip(label: string, value: number | string, delta?: { text: string; 
 function renderAllocation(state: GameState, onChange: () => void): void {
   const summary = document.getElementById("villager-summary")!;
   const idle = idleCount(state);
-  const adults = adultCount(state);
+  const fertile = fertileCount(state);
+  const elders = elderCount(state);
   const kids = childCount(state);
-  const kidSuffix = kids > 0 ? `, ${kids} child${kids === 1 ? "" : "ren"}` : "";
-  summary.textContent = `${adults} adult${adults === 1 ? "" : "s"}${kidSuffix} — ${idle} idle`;
+  const parts: string[] = [`${fertile} adult${fertile === 1 ? "" : "s"}`];
+  if (elders > 0) parts.push(`${elders} elder${elders === 1 ? "" : "s"}`);
+  if (kids > 0) parts.push(`${kids} child${kids === 1 ? "" : "ren"}`);
+  summary.textContent = `${parts.join(", ")} — ${idle} idle`;
 
   const container = document.getElementById("job-controls")!;
   container.innerHTML = "";
@@ -460,9 +473,10 @@ function renderAllocation(state: GameState, onChange: () => void): void {
 function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
   const row = document.createElement("div");
   row.className = "job-row";
+  row.title = JOB_TOOLTIPS[job] ?? "";
 
   const count = jobCount(state, job);
-  const cap = job === "scout" ? adultCount(state) : totalReachableCapacity(state, job);
+  const cap = job === "scout" ? fertileCount(state) : totalReachableCapacity(state, job);
   const name = document.createElement("span");
   name.className = "name";
   name.textContent = `${JOB_LABEL[job]} ${count}/${cap}`;
@@ -523,6 +537,7 @@ function renderBuildingsPanel(state: GameState, onChange: () => void): void {
   for (const id of ids) {
     panel.appendChild(buildingRow(state, BUILDINGS[id], onChange));
   }
+  panel.appendChild(houseRow(state, onChange));
 }
 
 function buildingRow(state: GameState, def: BuildingDef, onChange: () => void): HTMLElement {
@@ -550,12 +565,49 @@ function buildingRow(state: GameState, def: BuildingDef, onChange: () => void): 
 
   const btn = document.createElement("button");
   btn.textContent = "Build";
-  btn.disabled = !canBuild(state, def.id);
-  if (def.id === "long_house" && state.pops.length < LONG_HOUSE_POP_GATE) {
-    btn.title = `Requires ${LONG_HOUSE_POP_GATE} people (${state.pops.length} now)`;
-  }
+  const blocker = buildBlockerReason(state, def.id);
+  btn.disabled = blocker !== null;
+  btn.title = blocker ?? def.description;
   btn.addEventListener("click", () => {
     build(state, def.id);
+    onChange();
+  });
+
+  row.append(name, cost, btn);
+  return row;
+}
+
+// Houses are repeatable — each row shows "N built" + a Build Another button.
+// Cost and capacity are fixed constants so this doesn't need the BuildingDef
+// shape. Pre-Long-House the row is greyed out but still visible, so the player
+// can see the mechanic exists and what unlocks it.
+function houseRow(state: GameState, onChange: () => void): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "building-row house-row";
+  row.title = `Private dwelling with a garden plot. +${HOUSE_CAPACITY} pop capacity, +${HOUSE_FOOD_YIELD} food/year. ${HOUSE_COST.wood} wood, ${HOUSE_COST.stone} stone each.`;
+
+  const name = document.createElement("span");
+  name.className = "building-name";
+  const label = state.houses > 0 ? `Houses (${state.houses})` : "Houses";
+  name.textContent = label;
+
+  const cost = document.createElement("span");
+  cost.className = "building-cost";
+  const def: BuildingDef = {
+    id: "house" as BuildingId,
+    name: "Houses",
+    description: "",
+    cost: { wood: HOUSE_COST.wood, stone: HOUSE_COST.stone },
+  };
+  cost.append(...costChips(state, def));
+
+  const btn = document.createElement("button");
+  btn.textContent = state.houses > 0 ? "Build another" : "Build";
+  const blocker = houseBlockerReason(state);
+  btn.disabled = blocker !== null;
+  btn.title = blocker ?? `+${HOUSE_CAPACITY} pop capacity, +${HOUSE_FOOD_YIELD} food/year`;
+  btn.addEventListener("click", () => {
+    buildHouse(state);
     onChange();
   });
 
@@ -653,7 +705,7 @@ function renderTilePopup(state: GameState): void {
   const { x, y } = state.selectedTile;
   const t = state.tiles[y][x];
   popup.classList.remove("hidden");
-  popup.innerHTML = describeTile(t, x, y);
+  popup.innerHTML = describeTile(state, t, x, y);
 }
 
 function renderTileInfo(state: GameState, onChange: () => void): void {
@@ -664,7 +716,7 @@ function renderTileInfo(state: GameState, onChange: () => void): void {
   }
   const { x, y } = state.selectedTile;
   const t = state.tiles[y][x];
-  panel.innerHTML = describeTile(t, x, y);
+  panel.innerHTML = describeTile(state, t, x, y);
 
   if (t.discovered && !t.road && t.terrain !== "water" && t.terrain !== "mountain") {
     const btn = document.createElement("button");
@@ -687,7 +739,7 @@ function renderTileInfo(state: GameState, onChange: () => void): void {
   }
 }
 
-function describeTile(t: Tile, x: number, y: number): string {
+function describeTile(state: GameState, t: Tile, x: number, y: number): string {
   const lines: string[] = [];
   lines.push(`<div class="tile-title">${terrainLabel(t)} <span class="coord">(${x},${y})</span></div>`);
   lines.push(`<div class="tile-state">${stateLabel(t)}</div>`);
@@ -701,6 +753,8 @@ function describeTile(t: Tile, x: number, y: number): string {
   } else if (t.capacity > 0) {
     lines.push(`<div>Workers: ${t.workers}/${t.capacity}</div>`);
   }
+  const tileYield = describeTileYield(state, t);
+  if (tileYield) lines.push(`<div class="tile-yield">${tileYield}</div>`);
   if (t.terrain === "grass" && t.fertility > 0) {
     lines.push(`<div class="fertile">Fertile soil — +${t.fertility} food per farmer</div>`);
   }
@@ -718,14 +772,51 @@ function describeTile(t: Tile, x: number, y: number): string {
   }
   if (t.terrain === "stone") {
     if (t.state === "exhausted") {
-      lines.push(`<div class="muted">Reserve: exhausted</div>`);
+      lines.push(`<div class="muted">Quarry worked dry — no more stone here. The seam is silent.</div>`);
     } else if (t.state === "worked") {
       lines.push(`<div>Reserve: ${t.reserve}</div>`);
+      lines.push(`<div class="muted">A stone seam holds a finite amount; quarries eventually exhaust.</div>`);
     } else {
-      lines.push(`<div class="muted">Reserve: unknown</div>`);
+      lines.push(`<div class="muted">Reserve: unknown — and finite. Quarries can run dry.</div>`);
     }
   }
   return lines.join("");
+}
+
+// Per-tile yield projection — surfaces what the assigned workers actually
+// produce (#23 — "tile use vs discovery confusion" — players didn't realise
+// tiles produce based on assigned workers). Only shown when there ARE workers;
+// otherwise tile state alone is enough.
+function describeTileYield(state: GameState, t: Tile): string | null {
+  if (t.workers <= 0) return null;
+  if (t.state !== "worked" && t.state !== "cultivating") return null;
+  const cultivating = t.state === "cultivating";
+  const prefix = cultivating ? "Will yield (next year): " : "Yields: ";
+  if (t.terrain === "grass") {
+    const granaryBonus = state.buildings.granary ? 0.5 : 0;
+    const perWorker = 2 + t.fertility + granaryBonus;
+    const total = Math.floor(t.workers * perWorker);
+    return `${prefix}+${total} food/year`;
+  }
+  if (t.terrain === "forest") {
+    const lodgeBonus = state.buildings.hunting_lodge ? 0.5 : 0;
+    const huntFood = Math.floor(t.hunterWorkers * (3 + lodgeBonus));
+    const woodcutters = t.workers - t.hunterWorkers;
+    const wood = woodcutters * 2;
+    const parts: string[] = [];
+    if (huntFood > 0) parts.push(`+${huntFood} food`);
+    if (wood > 0) parts.push(`+${wood} wood`);
+    return parts.length > 0 ? `${prefix}${parts.join(", ")}/year` : null;
+  }
+  if (t.terrain === "stone") {
+    return `${prefix}+${t.workers} stone/year`;
+  }
+  if (t.terrain === "beach" || t.terrain === "river") {
+    const lo = t.fishRichness > 0 ? 2 : 1;
+    const hi = t.fishRichness > 0 ? 4 : 3;
+    return `${prefix}+${lo * t.workers}–${hi * t.workers} food/year (variable)`;
+  }
+  return null;
 }
 
 function terrainLabel(t: Tile): string {

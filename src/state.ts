@@ -5,11 +5,15 @@ import {
   COMPANIONS,
   DEPARTURE_TIMINGS,
   DepartureChoices,
+  ELDER_AGE,
   FOOD_PER_ADULT,
   FOOD_PER_CHILD,
   GameState,
   GRANARY_FARMER_BONUS,
+  HOUSE_FOOD_YIELD,
   HUNTING_LODGE_HUNTER_BONUS,
+  INITIAL_HUT_CAPACITY,
+  HOUSE_CAPACITY,
   Job,
   LANDING_SPOTS,
   LIFESPAN_RANGE,
@@ -27,6 +31,8 @@ import {
   ScriptedWave,
   ScriptedWaveId,
   STARTER_AGE_RANGE,
+  STARTER_CHILD_AGE_RANGE,
+  STARTER_LIFESPAN_FLOOR_BONUS,
   YIELD_PER_WORKER,
 } from "./types";
 
@@ -38,12 +44,12 @@ export function makeStarterPop(): Pop {
   const age = randInt(STARTER_AGE_RANGE[0], STARTER_AGE_RANGE[1]);
   // Floor remaining life so the whole cohort can't die before the first baby
   // matures — bad luck shouldn't kill the settlement before it has a chance.
-  const lifespan = Math.max(age + 6, randInt(LIFESPAN_RANGE[0], LIFESPAN_RANGE[1]));
+  const lifespan = Math.max(age + STARTER_LIFESPAN_FLOOR_BONUS, randInt(LIFESPAN_RANGE[0], LIFESPAN_RANGE[1]));
   return { age, lifespan, founder: true };
 }
 
 export function makeStarterChild(): Pop {
-  const age = randInt(0, 2);
+  const age = randInt(STARTER_CHILD_AGE_RANGE[0], STARTER_CHILD_AGE_RANGE[1]);
   return { age, lifespan: randInt(LIFESPAN_RANGE[0], LIFESPAN_RANGE[1]), founder: true };
 }
 
@@ -113,7 +119,9 @@ export function newGame(departure: DepartureChoices): GameState {
       : { status: "docked", returnYear: null, crew: [] },
     scriptedWaves: rollScriptedWaves(),
     pendingMerchant: false,
-    buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, long_house: false },
+    buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, long_house: false, shrine_of_anata: false },
+    houses: 0,
+    oldAgeDeathsTotal: 0,
     departure,
     log: [
       {
@@ -178,12 +186,30 @@ export function totalPop(state: GameState): number {
   return state.pops.length;
 }
 
+// Age-phase predicates — the three-phase system. "adult" here is the bucket
+// of pops who have left childhood; it includes elders for consumption purposes
+// (they eat like adults). "fertile" is the subset who can actually work and
+// reproduce. Keep these distinctions — UI, allocator, boat dispatch, and food
+// math all care about different phases.
+export function isChild(p: Pop): boolean { return p.age < ADULT_AGE; }
+export function isFertile(p: Pop): boolean { return p.age >= ADULT_AGE && p.age < ELDER_AGE; }
+export function isElder(p: Pop): boolean { return p.age >= ELDER_AGE; }
+
 export function adultCount(state: GameState): number {
+  // Adults for food purposes — includes elders. Used by consumption math.
   return state.pops.filter((p) => p.age >= ADULT_AGE).length;
 }
 
+export function fertileCount(state: GameState): number {
+  return state.pops.filter(isFertile).length;
+}
+
+export function elderCount(state: GameState): number {
+  return state.pops.filter(isElder).length;
+}
+
 export function childCount(state: GameState): number {
-  return state.pops.length - adultCount(state);
+  return state.pops.filter(isChild).length;
 }
 
 export function assignedTotal(state: GameState): number {
@@ -197,9 +223,19 @@ export function assignedTotal(state: GameState): number {
   );
 }
 
-// Idle *adults* — children can't work.
+// Idle = fertile adults not assigned to a job. Elders don't count — they've
+// earned leisure. Children can't work either.
 export function idleCount(state: GameState): number {
-  return adultCount(state) - assignedTotal(state);
+  return fertileCount(state) - assignedTotal(state);
+}
+
+// Hard pop cap: starter huts hold 20 pops. Long-House-gated houses extend it.
+// Used by the growth check — births are blocked at cap. Newcomers and refugees
+// are NOT gated by capacity (you can't turn away people fleeing for their lives),
+// so pop can exceed cap temporarily; you just can't grow it further until the
+// next house goes up.
+export function popCapacity(state: GameState): number {
+  return INITIAL_HUT_CAPACITY + state.houses * HOUSE_CAPACITY;
 }
 
 export function jobCount(state: GameState, job: Job): number {
@@ -212,6 +248,12 @@ export function jobCount(state: GameState, job: Job): number {
 // immediately even though a freshly-cultivated tile won't yield until next
 // year. Boat crew aren't counted as consumers; reserve depletion isn't clamped.
 // Random events aren't projectable — this is a capacity estimate.
+//
+// Consumption uses *next turn's ages* (age+1): the end-year pipeline ages
+// everyone in step 0 before consuming food in step 5, so a child aged 3 today
+// will eat as an adult this turn. Also skips pops who will die of old age
+// before consumption. Fixes the "displayed ≠ actual" bug where the topbar
+// under-counted consumption for pops about to come of age.
 export function projectedYields(state: GameState): {
   food: { production: number; consumption: number; net: number };
   wood: number;
@@ -240,7 +282,17 @@ export function projectedYields(state: GameState): {
       }
     }
   }
-  const foodCons = adultCount(state) * FOOD_PER_ADULT + childCount(state) * FOOD_PER_CHILD;
+  foodProd += state.houses * HOUSE_FOOD_YIELD;
+
+  let futureAdults = 0;
+  let futureKids = 0;
+  for (const p of state.pops) {
+    const futureAge = p.age + 1;
+    if (futureAge >= p.lifespan) continue;
+    if (futureAge >= ADULT_AGE) futureAdults += 1;
+    else futureKids += 1;
+  }
+  const foodCons = futureAdults * FOOD_PER_ADULT + futureKids * FOOD_PER_CHILD;
   return {
     food: { production: foodProd, consumption: foodCons, net: foodProd - foodCons },
     wood: woodProd,
