@@ -1,7 +1,8 @@
 import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReach, totalReachableCapacity } from "./map";
 import { JOB_TOOLTIPS } from "./narratives";
-import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, totalPop } from "./state";
+import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, sheepHerdTotal, totalPop } from "./state";
 import {
+  acceptRefugees,
   assignWorker,
   build,
   buildBlockerReason,
@@ -11,6 +12,7 @@ import {
   canDispatchBoat,
   canExecuteTradeBasket,
   declineTrade,
+  declineRefugees,
   dispatchBoat,
   effectiveCrewLossChance,
   executeTradeBasket,
@@ -26,11 +28,13 @@ import {
   BUILDINGS,
   BuildingDef,
   BuildingId,
+  CHICKEN_EGG_FOOD_RATE,
   COMPANIONS,
   CompanionId,
   DEPARTURE_TIMINGS,
   DepartureChoices,
   DepartureTimingId,
+  FOOD_PER_ADULT,
   GameState,
   HOUSE_CAPACITY,
   HOUSE_COST,
@@ -42,20 +46,23 @@ import {
   LandingSpotId,
   MAP_H,
   MAP_W,
+  MerchantVisit,
+  MORALE_REFUGEE_ACCEPT,
+  MORALE_REFUGEE_REJECT,
   ORIGINS,
   OriginId,
   ROAD_COST,
+  SHEEP_FOOD_PER_SLAUGHTER,
+  SHEEP_HERD_CAP_PER_TILE,
   SHIP_FATES,
   ShipFateId,
   Tile,
   TILE_SIZE,
-  TRADE_MAX_PER_VISIT,
   TRADE_RATES,
   TradeBasket,
   TradeResource,
   VERSION,
   basketGoldDelta,
-  basketTotal,
   emptyBasket,
 } from "./types";
 
@@ -65,6 +72,9 @@ export interface UIHandlers {
 }
 
 const SKIP_INTRO_KEY = "isle-of-cambrera-skip-intro";
+const FEEDBACK_WORKER_URL = "https://cambrera.digimente.xyz/feedback";
+
+let _selectedRating = 0;
 
 // Callback dispatched when the player clicks Begin in the intro overlay.
 // Updated each time maybeShowIntro is called so the handler is always current.
@@ -77,6 +87,7 @@ export function initUI(handlers: UIHandlers): void {
   });
   renderStaticCredits();
   initIntroHandlers();
+  initFeedbackModal();
 }
 
 function renderStaticCredits(): void {
@@ -99,6 +110,109 @@ function initIntroHandlers(): void {
     hideIntro();
     _onIntroBegin();
   });
+}
+
+// ─── Feedback modal ───────────────────────────────────────────────────────────
+
+function initFeedbackModal(): void {
+  document.getElementById("feedback-btn")!.addEventListener("click", showFeedbackModal);
+  document.getElementById("fb-cancel")!.addEventListener("click", hideFeedbackModal);
+  document.getElementById("fb-submit")!.addEventListener("click", () => { void submitFeedback(); });
+  document.getElementById("fb-text")!.addEventListener("input", () => {
+    const len = (document.getElementById("fb-text")! as HTMLTextAreaElement).value.length;
+    document.getElementById("fb-char-count")!.textContent = `${len} / 1000`;
+  });
+  buildRatingButtons();
+}
+
+function buildRatingButtons(): void {
+  const container = document.getElementById("fb-rating")!;
+  for (let i = 1; i <= 5; i++) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "fb-star";
+    btn.textContent = "★";
+    btn.title = `${i} star${i > 1 ? "s" : ""}`;
+    btn.dataset.value = String(i);
+    btn.addEventListener("click", () => {
+      _selectedRating = i;
+      updateRatingButtons();
+    });
+    container.appendChild(btn);
+  }
+}
+
+function updateRatingButtons(): void {
+  document.querySelectorAll<HTMLButtonElement>(".fb-star").forEach((btn) => {
+    btn.classList.toggle("selected", Number(btn.dataset.value) <= _selectedRating);
+  });
+}
+
+function showFeedbackModal(): void {
+  _selectedRating = 0;
+  (document.getElementById("fb-name")! as HTMLInputElement).value = "";
+  (document.getElementById("fb-text")! as HTMLTextAreaElement).value = "";
+  document.getElementById("fb-char-count")!.textContent = "0 / 1000";
+  document.getElementById("fb-version")!.textContent = VERSION;
+  document.getElementById("fb-status")!.textContent = "";
+  document.getElementById("fb-status")!.className = "";
+  (document.getElementById("fb-submit")! as HTMLButtonElement).disabled = false;
+  (document.getElementById("fb-submit")! as HTMLButtonElement).textContent = "Send";
+  updateRatingButtons();
+  const overlay = document.getElementById("feedback-overlay")!;
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
+function hideFeedbackModal(): void {
+  const overlay = document.getElementById("feedback-overlay")!;
+  overlay.classList.add("hidden");
+  overlay.setAttribute("aria-hidden", "true");
+}
+
+async function submitFeedback(): Promise<void> {
+  const name = ((document.getElementById("fb-name")! as HTMLInputElement).value.trim() || "Anonymous").slice(0, 80);
+  const text = (document.getElementById("fb-text")! as HTMLTextAreaElement).value.trim();
+  const status = document.getElementById("fb-status")!;
+  const btn = document.getElementById("fb-submit")! as HTMLButtonElement;
+
+  if (_selectedRating === 0) {
+    status.textContent = "Please select a rating.";
+    status.className = "fb-status-error";
+    return;
+  }
+  if (text.length === 0) {
+    status.textContent = "Please write some feedback.";
+    status.className = "fb-status-error";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+  status.textContent = "";
+
+  try {
+    const res = await fetch(FEEDBACK_WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tester_name: name, rating: _selectedRating, feedback: text, version: VERSION }),
+    });
+    if (res.ok) {
+      status.textContent = "Feedback sent. Thank you.";
+      status.className = "fb-status-ok";
+      setTimeout(hideFeedbackModal, 1800);
+    } else {
+      status.textContent = "Something went wrong — please try again.";
+      status.className = "fb-status-error";
+      btn.disabled = false;
+      btn.textContent = "Send";
+    }
+  } catch {
+    status.textContent = "Could not reach the server.";
+    status.className = "fb-status-error";
+    btn.disabled = false;
+    btn.textContent = "Send";
+  }
 }
 
 export function maybeShowIntro(onBegin: () => void): void {
@@ -239,22 +353,25 @@ export function attachCanvasClick(
 export function renderUI(state: GameState, onAllocChange: () => void): void {
   renderTopbar(state);
   renderAllocation(state, onAllocChange);
+  renderLivestock(state, onAllocChange);
   renderBuildingsPanel(state, onAllocChange);
   renderShipPanel(state, onAllocChange);
   renderTileInfo(state, onAllocChange);
   renderTilePopup(state);
   renderLog(state);
   const endBtn = document.getElementById("end-turn-btn") as HTMLButtonElement;
-  endBtn.disabled = state.gameOver || state.pendingMerchant;
+  endBtn.disabled = state.gameOver || state.merchantVisit !== null || !!state.pendingRefugees;
   endBtn.textContent = state.gameOver
     ? "— Settlement Failed —"
-    : state.pendingMerchant
+    : state.merchantVisit !== null
       ? "Merchants waiting…"
-      : "End Year";
+      : state.pendingRefugees
+        ? "Refugees at the gate…"
+        : "End Year";
 }
 
 export function maybeShowTradeModal(state: GameState, onResolve: () => void): void {
-  if (!state.pendingMerchant || state.gameOver) {
+  if (!state.merchantVisit || state.gameOver) {
     hideTradeModal();
     return;
   }
@@ -276,12 +393,20 @@ function showTradeModal(state: GameState, onResolve: () => void): void {
   const basket: TradeBasket = emptyBasket();
 
   const bump = (kind: "sell" | "buy", res: TradeResource, delta: number): void => {
+    const visit = state.merchantVisit!;
     const next = basket[kind][res] + delta;
     if (next < 0) return;
-    // Enforce the combined cap — delta-positive moves fail at the max.
-    if (delta > 0 && basketTotal(basket) >= TRADE_MAX_PER_VISIT) return;
-    // Can't schedule to sell more than we have.
-    if (kind === "sell" && next > state[res]) return;
+    const held = res === "wool" ? state.wool : (state as unknown as Record<string, number>)[res] as number;
+    if (kind === "sell" && next > held) return;
+    if (kind === "buy" && next > visit.sellStock[res]) return;
+    // Patrician cargo constraint: sellTotal ≤ cargoCapacity − stockTotal + buyTotal
+    if (kind === "sell" && delta > 0) {
+      const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
+      const stockTotal = resources.reduce((s, r) => s + visit.sellStock[r], 0);
+      const buyTotal = resources.reduce((s, r) => s + basket.buy[r], 0);
+      const newSellTotal = resources.reduce((s, r) => s + basket.sell[r], 0) + delta;
+      if (newSellTotal > visit.cargoCapacity - stockTotal + buyTotal) return;
+    }
     basket[kind][res] = next;
     rerender();
   };
@@ -317,28 +442,47 @@ function showTradeModal(state: GameState, onResolve: () => void): void {
 }
 
 function buildTradeHTML(state: GameState, basket: TradeBasket): string {
-  const total = basketTotal(basket);
+  const visit = state.merchantVisit!;
   const delta = basketGoldDelta(basket);
-  const valid = total > 0 && canExecuteTradeBasket(state, basket);
+  const valid = canExecuteTradeBasket(state, basket);
 
-  const resources: TradeResource[] = ["food", "wood", "stone"];
-  const rows = resources.map((r) => basketRow(state, basket, r, total)).join("");
+  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
+  const stockTotal = resources.reduce((s, r) => s + visit.sellStock[r], 0);
+  const buyTotal = resources.reduce((s, r) => s + basket.buy[r], 0);
+  const sellTotal = resources.reduce((s, r) => s + basket.sell[r], 0);
+  const sellCap = visit.cargoCapacity - stockTotal + buyTotal;
+
+  const rows = resources.map((r) => basketRow(state, basket, r, visit)).join("");
 
   const goldAfter = state.gold + delta;
   const goldClass = delta >= 0 ? "gold-pos" : "gold-neg";
   const goldSign = delta >= 0 ? `+${delta}` : `${delta}`;
 
-  let status = "Pick any combination of buys and sells, then strike the deal.";
-  if (total === 0) status = "Pick any combination of buys and sells, then strike the deal.";
-  else if (goldAfter < 0) status = `Not enough gold — would leave you at ${goldAfter}.`;
-  else status = `${total} / ${TRADE_MAX_PER_VISIT} units in the basket.`;
+  let status: string;
+  if (sellTotal === 0 && buyTotal === 0) {
+    status = "Select goods to trade, then strike the deal.";
+  } else if (goldAfter < 0) {
+    status = `Not enough gold — would leave you at ${goldAfter}.`;
+  } else {
+    status = `Selling ${sellTotal}/${sellCap} cargo slots. Buying ${buyTotal}.`;
+  }
+
+  const offered = resources.filter((r) => visit.sellStock[r] > 0)
+    .map((r) => `${visit.sellStock[r]} ${r}`).join(", ");
+
+  const onHandParts = [`<strong>${state.gold}</strong> gold`, `<strong>${state.food}</strong> food`,
+    `<strong>${state.wood}</strong> wood`, `<strong>${state.stone}</strong> stone`];
+  if (state.wool > 0) onHandParts.push(`<strong>${state.wool}</strong> wool`);
 
   return `
     <div id="trade-panel" role="dialog" aria-label="Merchant trade">
       <h2>✦ Travelling Merchants ✦</h2>
-      <p class="trade-flavor">They've laid out their wares at the edge of the clearing. One basket of trades is on offer before they move on — up to ${TRADE_MAX_PER_VISIT} units in any mix.</p>
+      <p class="trade-flavor">Their wagon holds <strong>${visit.cargoCapacity}</strong> cargo units. Buying from them frees space for your goods — wool is yours to sell; they carry none.</p>
       <div class="trade-onhand">
-        On hand: <strong>${state.gold}</strong> gold, <strong>${state.food}</strong> food, <strong>${state.wood}</strong> wood, <strong>${state.stone}</strong> stone
+        On hand: ${onHandParts.join(", ")}
+      </div>
+      <div class="trade-onhand trade-merchant-stock">
+        They offer: <em>${offered || "nothing today"}</em>
       </div>
       <div class="basket-grid">
         <div class="basket-head">
@@ -358,23 +502,69 @@ function buildTradeHTML(state: GameState, basket: TradeBasket): string {
   `;
 }
 
-function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, total: number): string {
-  const held = state[r];
+export function maybeShowRefugeesModal(state: GameState, onResolve: () => void): void {
+  const overlay = document.getElementById("refugees-overlay")!;
+  if (!state.pendingRefugees || state.gameOver) {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    return;
+  }
+
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+
+  const { count, text } = state.pendingRefugees;
+  const foodCost = count * FOOD_PER_ADULT;
+  overlay.innerHTML = `
+    <div id="refugees-panel" role="dialog" aria-label="Refugees at the Gate">
+      <h2>Refugees at the Gate</h2>
+      <p class="refugees-flavor">${text}</p>
+      <p class="refugees-impact">
+        Accepting will add <strong>${count}</strong> adult${count === 1 ? "" : "s"} to your settlement.
+        They will draw <strong>${foodCost} food per year</strong> from next year onward.
+      </p>
+      <div class="refugees-buttons">
+        <button class="refugees-accept">Take them in (+${MORALE_REFUGEE_ACCEPT} morale)</button>
+        <button class="refugees-decline">Send them away (${MORALE_REFUGEE_REJECT} morale)</button>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector<HTMLButtonElement>(".refugees-accept")!.addEventListener("click", () => {
+    state.log.unshift(acceptRefugees(state));
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    onResolve();
+  });
+  overlay.querySelector<HTMLButtonElement>(".refugees-decline")!.addEventListener("click", () => {
+    state.log.unshift(declineRefugees(state));
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    onResolve();
+  });
+}
+
+function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, visit: MerchantVisit): string {
+  const held = r === "wool" ? state.wool : (state as unknown as Record<string, number>)[r] as number;
   const sellQty = basket.sell[r];
   const buyQty = basket.buy[r];
   const after = held - sellQty + buyQty;
   const sellRate = TRADE_RATES.sell[r];
   const buyRate = TRADE_RATES.buy[r];
-  const atCap = total >= TRADE_MAX_PER_VISIT;
 
-  // +Sell disabled when capped OR player has nothing left to sell of this resource.
-  const sellPlusDisabled = atCap || sellQty >= held;
-  // +Buy disabled when capped OR the additional cost would exceed current gold
-  //   (after accounting for whatever gold the basket already reserves/credits).
-  const currentDelta = basketGoldDelta(basket);
-  const nextBuyCost = buyRate;
-  const goldAfterNextBuy = state.gold + currentDelta - nextBuyCost;
-  const buyPlusDisabled = atCap || goldAfterNextBuy < 0;
+  // Patrician sell cap: sellTotal ≤ cargoCapacity − stockTotal + buyTotal
+  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
+  const stockTotal = resources.reduce((s, res) => s + visit.sellStock[res], 0);
+  const buyTotal = resources.reduce((s, res) => s + basket.buy[res], 0);
+  const sellTotal = resources.reduce((s, res) => s + basket.sell[res], 0);
+  const sellCap = visit.cargoCapacity - stockTotal + buyTotal;
+
+  const sellPlusDisabled = sellQty >= held || sellTotal >= sellCap;
+  const goldAfterNextBuy = state.gold + basketGoldDelta(basket) - buyRate;
+  const buyPlusDisabled = r === "wool" || buyQty >= visit.sellStock[r] || goldAfterNextBuy < 0;
 
   const stepper = (kind: "sell" | "buy", qty: number, plusDisabled: boolean): string => `
     <div class="basket-stepper">
@@ -384,14 +574,18 @@ function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, tota
     </div>
   `;
 
+  const buyCell = r === "wool"
+    ? `<div class="basket-stepper"><span class="basket-qty" style="color:#8a6535">—</span></div>`
+    : stepper("buy", buyQty, buyPlusDisabled);
+
   return `
     <div class="basket-row">
       <span class="basket-res">
         <strong>${r.charAt(0).toUpperCase()}${r.slice(1)}</strong>
-        <span class="rate-hint">sell ${sellRate}g · buy ${buyRate}g</span>
+        <span class="rate-hint">sell ${sellRate}g${r !== "wool" ? ` · buy ${buyRate}g` : " only"}</span>
       </span>
       ${stepper("sell", sellQty, sellPlusDisabled)}
-      ${stepper("buy",  buyQty,  buyPlusDisabled)}
+      ${buyCell}
       <span class="basket-after align-right">${held}<span class="muted"> → </span><strong>${after}</strong></span>
     </div>
   `;
@@ -410,14 +604,18 @@ function renderTopbar(state: GameState): void {
     ? `${pop}/${cap} (${fertile}A+${elders}E+${kids}C)`
     : `${pop}/${cap} (${fertile}A+${kids}C)`;
   const yields = projectedYields(state);
-  el.append(
+  const chips: HTMLElement[] = [
     resChip("Pop", popBreakdown),
     resChip("Food", state.food, netDelta(yields.food.net)),
     resChip("Wood", state.wood, productionDelta(yields.wood)),
     resChip("Stone", state.stone, productionDelta(yields.stone)),
     resChip("Gold", state.gold),
-    moraleChip(state.morale),
-  );
+  ];
+  if (state.wool > 0 || yields.wool > 0) {
+    chips.push(resChip("Wool", state.wool, yields.wool > 0 ? productionDelta(yields.wool) : undefined));
+  }
+  chips.push(moraleChip(state.morale));
+  el.append(...chips);
 }
 
 function moraleChip(morale: number): HTMLElement {
@@ -511,8 +709,8 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
     plus.title = "The island is fully charted — no more land to explore.";
   } else if (job !== "scout" && idleCount(state) > 0 && !canAddProd) {
     const terrainLabel: Record<Exclude<Job, "scout">, string> = {
-      farmer: "grassland", woodcutter: "forest", hunter: "forest", quarryman: "stone",
-      fisher: "shallows",
+      farmer: "grassland", shepherd: "grassland", woodcutter: "forest", hunter: "forest",
+      quarryman: "stone", fisher: "shallows",
     };
     plus.title = `No ${terrainLabel[job]} in reach — send scouts`;
   }
@@ -696,6 +894,71 @@ function renderShipPanel(state: GameState, onChange: () => void): void {
   panel.appendChild(btn);
 }
 
+function renderLivestock(state: GameState, onChange: () => void): void {
+  const section = document.getElementById("livestock-section")!;
+  const panel = document.getElementById("livestock-panel")!;
+
+  const shepherdCount = jobCount(state, "shepherd");
+  const hasChickens = state.buildings.chicken_coop;
+
+  if (shepherdCount === 0 && !hasChickens) {
+    section.classList.add("hidden");
+    return;
+  }
+  section.classList.remove("hidden");
+
+  let html = "";
+
+  if (shepherdCount > 0) {
+    const totalSheep = sheepHerdTotal(state);
+    let shepherdTiles = 0;
+    for (let y = 0; y < MAP_H; y++) {
+      for (let x = 0; x < MAP_W; x++) {
+        if (state.tiles[y][x].shepherdWorkers > 0) shepherdTiles++;
+      }
+    }
+    const foodFromSlaughter = state.sheepSlaughter * SHEEP_FOOD_PER_SLAUGHTER;
+    html += `
+      <div class="livestock-row">
+        <span class="livestock-label">Sheep:</span>
+        <span class="livestock-value">${totalSheep} (${shepherdTiles} tile${shepherdTiles === 1 ? "" : "s"})</span>
+      </div>
+      <div class="livestock-row">
+        <span class="livestock-label">Cull/yr:</span>
+        <button class="livestock-step" id="slaughter-minus" ${state.sheepSlaughter <= 0 ? "disabled" : ""}>−</button>
+        <span class="livestock-qty">${state.sheepSlaughter}</span>
+        <button class="livestock-step" id="slaughter-plus">+</button>
+        <span class="livestock-hint">${state.sheepSlaughter > 0 ? `+${foodFromSlaughter} food/yr` : "no culling"}</span>
+      </div>
+      <div class="livestock-note">Herds grow +2/yr; cap ${SHEEP_HERD_CAP_PER_TILE}/tile.</div>
+    `;
+  }
+
+  if (hasChickens) {
+    if (shepherdCount > 0) html += `<div class="livestock-divider"></div>`;
+    const eggYield = Math.floor(state.chickens * CHICKEN_EGG_FOOD_RATE);
+    html += `
+      <div class="livestock-row">
+        <span class="livestock-label">Chickens:</span>
+        <span class="livestock-value">${state.chickens}/${state.chickenCapacity}</span>
+        <span class="livestock-hint">+${eggYield} food/yr (eggs)</span>
+      </div>
+      <div class="livestock-note">Flock grows ~40%/yr; surplus culled at cap.</div>
+    `;
+  }
+
+  panel.innerHTML = html;
+
+  panel.querySelector<HTMLButtonElement>("#slaughter-minus")?.addEventListener("click", () => {
+    state.sheepSlaughter = Math.max(0, state.sheepSlaughter - 1);
+    onChange();
+  });
+  panel.querySelector<HTMLButtonElement>("#slaughter-plus")?.addEventListener("click", () => {
+    state.sheepSlaughter += 1;
+    onChange();
+  });
+}
+
 function renderTilePopup(state: GameState): void {
   const popup = document.getElementById("tile-popup")!;
   if (!state.selectedTile) {
@@ -743,6 +1006,9 @@ function describeTile(state: GameState, t: Tile, x: number, y: number): string {
   const lines: string[] = [];
   lines.push(`<div class="tile-title">${terrainLabel(t)} <span class="coord">(${x},${y})</span></div>`);
   lines.push(`<div class="tile-state">${stateLabel(t)}</div>`);
+  if (t.state === "cultivating" && t.terrain === "grass") {
+    lines.push(`<div class="muted">First year: settlers break ground — no harvest until next year.</div>`);
+  }
   if (t.terrain === "forest" && t.capacity > 0) {
     const woodcutters = t.workers - t.hunterWorkers;
     const parts: string[] = [];
@@ -793,10 +1059,22 @@ function describeTileYield(state: GameState, t: Tile): string | null {
   const cultivating = t.state === "cultivating";
   const prefix = cultivating ? "Will yield (next year): " : "Yields: ";
   if (t.terrain === "grass") {
-    const granaryBonus = state.buildings.granary ? 0.5 : 0;
-    const perWorker = 2 + t.fertility + granaryBonus;
-    const total = Math.floor(t.workers * perWorker);
-    return `${prefix}+${total} food/year`;
+    const shepherds = t.shepherdWorkers;
+    const farmers = t.workers - shepherds;
+    const parts: string[] = [];
+    if (farmers > 0) {
+      const granaryBonus = state.buildings.granary ? 0.5 : 0;
+      const perWorker = 2 + t.fertility + granaryBonus;
+      const total = Math.floor(farmers * perWorker);
+      const bonusParts: string[] = ["2 base"];
+      if (t.fertility > 0) bonusParts.push("fertile +1");
+      if (granaryBonus > 0) bonusParts.push("granary +0.5");
+      parts.push(`+${total} food (${bonusParts.join(", ")}/farmer)`);
+    }
+    if (shepherds > 0) {
+      parts.push(`+${shepherds} food (milk), +${shepherds} wool`);
+    }
+    return parts.length > 0 ? `${prefix}${parts.join("; ")}/year` : null;
   }
   if (t.terrain === "forest") {
     const lodgeBonus = state.buildings.hunting_lodge ? 0.5 : 0;
@@ -821,7 +1099,10 @@ function describeTileYield(state: GameState, t: Tile): string | null {
 
 function terrainLabel(t: Tile): string {
   if (t.state === "worked" || t.state === "fallow") {
-    if (t.terrain === "grass") return t.state === "worked" ? "Farmland" : "Fallow Farmland";
+    if (t.terrain === "grass") {
+      if (t.state === "worked") return t.shepherdWorkers > 0 ? "Pasture" : "Farmland";
+      return t.shepherdWorkers > 0 ? "Fallow Pasture" : "Fallow Farmland";
+    }
     if (t.terrain === "forest") {
       const hasHunters = t.hunterWorkers > 0;
       const hasWoodcutters = t.workers - t.hunterWorkers > 0;

@@ -11,6 +11,7 @@ const TERRAIN_COLORS: Record<Terrain, string> = {
 };
 
 const FARMLAND_COLOR = "#7a5a2a";
+const PASTURE_COLOR  = "#4a6830";   // shepherd grass — greener than turned farmland
 const LOGGING_COLOR = "#3a3020";
 const QUARRY_COLOR = "#5a5248";
 const EXHAUSTED_FOREST = "#4a3820";
@@ -96,7 +97,7 @@ function drawTile(
 
 function baseColor(tile: Tile): string {
   if (tile.state === "worked" || tile.state === "fallow") {
-    if (tile.terrain === "grass") return FARMLAND_COLOR;
+    if (tile.terrain === "grass") return tile.shepherdWorkers > 0 ? PASTURE_COLOR : FARMLAND_COLOR;
     if (tile.terrain === "forest") return LOGGING_COLOR;
     if (tile.terrain === "stone") return QUARRY_COLOR;
   }
@@ -138,7 +139,10 @@ function drawRichWaterMark(ctx: CanvasRenderingContext2D, px: number, py: number
 
 function drawWorkedDecor(ctx: CanvasRenderingContext2D, px: number, py: number, tile: Tile): void {
   switch (tile.terrain) {
-    case "grass": drawFarmRows(ctx, px, py); break;
+    case "grass":
+      if (tile.shepherdWorkers > 0) drawPastureDecor(ctx, px, py);
+      else drawFarmRows(ctx, px, py);
+      break;
     case "forest": drawLoggingCamp(ctx, px, py); break;
     case "stone": drawQuarryTerraces(ctx, px, py); break;
     case "beach": drawFishingBoat(ctx, px, py); break;
@@ -174,6 +178,28 @@ function drawFarmRows(ctx: CanvasRenderingContext2D, px: number, py: number): vo
   for (let i = 0; i < 4; i++) {
     ctx.fillRect(px + 3, py + 5 + i * 7, TILE_SIZE - 6, 1);
   }
+}
+
+function drawPastureDecor(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+  // Low grass tufts suggesting a grazed meadow.
+  ctx.fillStyle = "rgba(180,210,120,0.35)";
+  for (let i = 0; i < 5; i++) {
+    const gx = px + 4 + i * 6;
+    ctx.fillRect(gx, py + 8,  1, 4);
+    ctx.fillRect(gx + 1, py + 7, 1, 3);
+    ctx.fillRect(gx, py + 20, 1, 4);
+    ctx.fillRect(gx + 1, py + 21, 1, 3);
+  }
+  // Tiny white sheep blobs — two of them.
+  ctx.fillStyle = "rgba(240,240,230,0.85)";
+  ctx.fillRect(px + 7,  py + 13, 5, 3);
+  ctx.fillRect(px + 6,  py + 14, 7, 2);
+  ctx.fillRect(px + 20, py + 10, 5, 3);
+  ctx.fillRect(px + 19, py + 11, 7, 2);
+  // Tiny dark heads.
+  ctx.fillStyle = "rgba(60,40,20,0.8)";
+  ctx.fillRect(px + 12, py + 13, 2, 2);
+  ctx.fillRect(px + 25, py + 10, 2, 2);
 }
 
 function drawLoggingCamp(ctx: CanvasRenderingContext2D, px: number, py: number): void {

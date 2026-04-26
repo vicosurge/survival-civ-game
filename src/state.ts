@@ -2,6 +2,7 @@ import { buildIsland, currentWorkers, findEligibleTile } from "./map";
 import {
   ADULT_AGE,
   ALARM_RESPONSES,
+  CHICKEN_CAP_INITIAL,
   COMPANIONS,
   DEPARTURE_TIMINGS,
   DepartureChoices,
@@ -17,6 +18,8 @@ import {
   Job,
   LANDING_SPOTS,
   LIFESPAN_RANGE,
+  MAP_H,
+  MAP_W,
   MORALE_MAX,
   MORALE_MIN,
   MORALE_START,
@@ -30,10 +33,13 @@ import {
   SCRIPTED_WAVE_TARGETS,
   ScriptedWave,
   ScriptedWaveId,
+  SHEPHERD_FOOD_YIELD,
+  SHEPHERD_WOOL_YIELD,
   STARTER_AGE_RANGE,
   STARTER_CHILD_AGE_RANGE,
   STARTER_LIFESPAN_FLOOR_BONUS,
   YIELD_PER_WORKER,
+  CHICKEN_EGG_FOOD_RATE,
 } from "./types";
 
 function randInt(lo: number, hi: number): number {
@@ -118,9 +124,16 @@ export function newGame(departure: DepartureChoices): GameState {
       ? { status: "scrapped", returnYear: null, crew: [] }
       : { status: "docked", returnYear: null, crew: [] },
     scriptedWaves: rollScriptedWaves(),
-    pendingMerchant: false,
-    buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, long_house: false, shrine_of_anata: false },
+    merchantVisit: null,
+    pendingRefugees: null,
+    buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, long_house: false, shrine_of_anata: false, chicken_coop: false },
     houses: 0,
+    wool: 0,
+    sheepSlaughter: 0,
+    sheepSlaughterNotified: false,
+    chickens: 0,
+    chickenCapacity: CHICKEN_CAP_INITIAL,
+    chickenSacrificeNotified: false,
     oldAgeDeathsTotal: 0,
     departure,
     log: [
@@ -215,12 +228,25 @@ export function childCount(state: GameState): number {
 export function assignedTotal(state: GameState): number {
   return (
     currentWorkers(state, "farmer") +
+    currentWorkers(state, "shepherd") +
     currentWorkers(state, "woodcutter") +
     currentWorkers(state, "quarryman") +
     currentWorkers(state, "hunter") +
     currentWorkers(state, "fisher") +
     state.scouts
   );
+}
+
+// Total sheep across all active shepherd tiles.
+export function sheepHerdTotal(state: GameState): number {
+  let total = 0;
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const t = state.tiles[y][x];
+      if (t.terrain === "grass" && t.shepherdWorkers > 0) total += t.sheepHerd;
+    }
+  }
+  return total;
 }
 
 // Idle = fertile adults not assigned to a job. Elders don't count — they've
@@ -258,31 +284,42 @@ export function projectedYields(state: GameState): {
   food: { production: number; consumption: number; net: number };
   wood: number;
   stone: number;
+  wool: number;
 } {
-  let foodProd = 0, woodProd = 0, stoneProd = 0;
+  let foodProd = 0, woodProd = 0, stoneProd = 0, woolProd = 0;
   for (let y = 0; y < state.tiles.length; y++) {
     for (let x = 0; x < state.tiles[y].length; x++) {
       const t = state.tiles[y][x];
       if (t.state !== "worked" && t.state !== "cultivating") continue;
       if (t.workers <= 0) continue;
-      if (t.terrain === "grass") foodProd += t.workers * (YIELD_PER_WORKER.farmer + t.fertility + (state.buildings.granary ? GRANARY_FARMER_BONUS : 0));
-      else if (t.terrain === "forest") {
+      if (t.terrain === "grass") {
+        const shepherds = t.shepherdWorkers;
+        const farmers = t.workers - shepherds;
+        if (farmers > 0) {
+          foodProd += farmers * (YIELD_PER_WORKER.farmer + t.fertility + (state.buildings.granary ? GRANARY_FARMER_BONUS : 0));
+        }
+        if (shepherds > 0) {
+          foodProd += shepherds * SHEPHERD_FOOD_YIELD;
+          woolProd += shepherds * SHEPHERD_WOOL_YIELD;
+        }
+      } else if (t.terrain === "forest") {
         if (t.hunterWorkers > 0) {
           const lodgeBonus = state.buildings.hunting_lodge ? HUNTING_LODGE_HUNTER_BONUS : 0;
           foodProd += t.hunterWorkers * (YIELD_PER_WORKER.hunter + lodgeBonus);
         }
         const woodcutters = t.workers - t.hunterWorkers;
         if (woodcutters > 0) woodProd += woodcutters * YIELD_PER_WORKER.woodcutter;
-      }
-      else if (t.terrain === "stone") stoneProd += t.workers * YIELD_PER_WORKER.quarryman;
-      else if (t.terrain === "beach" || t.terrain === "river") {
-        // Fisher projection uses the average of the rolled range. Actual yield
-        // each harvest is random — see applyFisherYield in turn.ts.
+      } else if (t.terrain === "stone") {
+        stoneProd += t.workers * YIELD_PER_WORKER.quarryman;
+      } else if (t.terrain === "beach" || t.terrain === "river") {
         foodProd += t.workers * (YIELD_PER_WORKER.fisher + t.fishRichness);
       }
     }
   }
   foodProd += state.houses * HOUSE_FOOD_YIELD;
+  if (state.buildings.chicken_coop && state.chickens > 0) {
+    foodProd += Math.floor(state.chickens * CHICKEN_EGG_FOOD_RATE);
+  }
 
   let futureAdults = 0;
   let futureKids = 0;
@@ -297,5 +334,6 @@ export function projectedYields(state: GameState): {
     food: { production: foodProd, consumption: foodCons, net: foodProd - foodCons },
     wood: woodProd,
     stone: stoneProd,
+    wool: woolProd,
   };
 }

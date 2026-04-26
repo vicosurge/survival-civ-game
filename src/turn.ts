@@ -13,6 +13,11 @@ import {
   BOAT_VOYAGE_YEARS,
   BUILDINGS,
   BuildingId,
+  CHICKEN_CAP_INITIAL,
+  CHICKEN_EGG_FOOD_RATE,
+  CHICKEN_GROWTH_RATE,
+  CHICKEN_SLAUGHTER_FOOD,
+  CHICKEN_STARTING_FLOCK,
   CULTIVATION_YEARS,
   FALLOW_REVERT_YEARS,
   FISHER_YIELD_BASE,
@@ -23,28 +28,37 @@ import {
   FOOD_PER_ADULT,
   FOOD_PER_CHILD,
   GameState,
+  GRANARY_FARMER_BONUS,
   HOUSE_COST,
   HOUSE_FOOD_YIELD,
   HUNTING_LODGE_HUNTER_BONUS,
   Job,
   LogEntry,
+  LONG_HOUSE_MORALE_BONUS,
+  LONG_HOUSE_POP_GATE,
   MAP_H,
   MAP_W,
+  MERCHANT_CARGO_RANGE,
+  MERCHANT_STOCK_UNITS,
+  MerchantVisit,
   MORALE_FOUNDER_EXTRA,
   MORALE_GROWTH_GATE,
   MORALE_OLD_AGE_DEATH,
+  MORALE_REFUGEE_ACCEPT,
+  MORALE_REFUGEE_REJECT,
   Pop,
+  ROAD_COST,
   SCOUT_REVEAL_PER_YEAR,
-  TRADE_MAX_PER_VISIT,
+  SHEEP_FOOD_PER_SLAUGHTER,
+  SHEEP_GROWTH_PER_YEAR,
+  SHEEP_HERD_CAP_PER_TILE,
+  SHEEP_STARTING_HERD,
+  SHEPHERD_FOOD_YIELD,
+  SHEPHERD_WOOL_YIELD,
   TradeBasket,
   TradeResource,
   basketGoldDelta,
-  basketTotal,
   YIELD_PER_WORKER,
-  GRANARY_FARMER_BONUS,
-  LONG_HOUSE_MORALE_BONUS,
-  LONG_HOUSE_POP_GATE,
-  ROAD_COST,
 } from "./types";
 
 function randInt(lo: number, hi: number): number {
@@ -130,7 +144,7 @@ export function endYear(state: GameState): void {
   }
 
   // 1. Collect yields from every worked tile, draining reserves where applicable.
-  let foodGain = 0, woodGain = 0, stoneGain = 0;
+  let foodGain = 0, woodGain = 0, stoneGain = 0, woolGain = 0;
   let fisherCount = 0;
   const exhaustionNotes: string[] = [];
   let quarriesExhausted = 0;
@@ -139,8 +153,18 @@ export function endYear(state: GameState): void {
       const t = state.tiles[y][x];
       if (t.state !== "worked" || t.workers <= 0) continue;
       if (t.terrain === "grass") {
-        const granaryBonus = state.buildings.granary ? GRANARY_FARMER_BONUS : 0;
-        foodGain += t.workers * (YIELD_PER_WORKER.farmer + t.fertility + granaryBonus);
+        const shepherds = t.shepherdWorkers;
+        const farmers = t.workers - shepherds;
+        if (farmers > 0) {
+          const granaryBonus = state.buildings.granary ? GRANARY_FARMER_BONUS : 0;
+          foodGain += farmers * (YIELD_PER_WORKER.farmer + t.fertility + granaryBonus);
+        }
+        if (shepherds > 0) {
+          foodGain += shepherds * SHEPHERD_FOOD_YIELD;
+          woolGain += shepherds * SHEPHERD_WOOL_YIELD;
+          // Herd grows whether or not the player slaughters — growth is natural.
+          t.sheepHerd = Math.min(SHEEP_HERD_CAP_PER_TILE, t.sheepHerd + SHEEP_GROWTH_PER_YEAR);
+        }
       } else if (t.terrain === "forest") {
         if (t.hunterWorkers > 0) {
           const lodgeBonus = state.buildings.hunting_lodge ? HUNTING_LODGE_HUNTER_BONUS : 0;
@@ -185,10 +209,61 @@ export function endYear(state: GameState): void {
   }
   const houseFood = state.houses * HOUSE_FOOD_YIELD;
   foodGain += houseFood;
+
+  // Sheep slaughter standing order — runs across all shepherd tiles.
+  let slaughtered = 0;
+  if (state.sheepSlaughter > 0) {
+    let remaining = state.sheepSlaughter;
+    for (let y = 0; y < MAP_H && remaining > 0; y++) {
+      for (let x = 0; x < MAP_W && remaining > 0; x++) {
+        const t = state.tiles[y][x];
+        if (t.terrain !== "grass" || t.shepherdWorkers <= 0) continue;
+        const take = Math.min(t.sheepHerd, remaining);
+        t.sheepHerd -= take;
+        slaughtered += take;
+        remaining -= take;
+      }
+    }
+    if (slaughtered > 0) {
+      foodGain += slaughtered * SHEEP_FOOD_PER_SLAUGHTER;
+      if (!state.sheepSlaughterNotified) {
+        state.sheepSlaughterNotified = true;
+        state.log.unshift({
+          year,
+          text: `Standing order: ${slaughtered} sheep culled from the flocks (+${slaughtered * SHEEP_FOOD_PER_SLAUGHTER} food). This will run automatically each year — adjust the slaughter count in the Livestock panel.`,
+          tone: "neutral",
+        });
+      }
+    }
+  }
+
+  // Chicken coop — eggs, flock growth, auto-cull at capacity cap.
+  if (state.buildings.chicken_coop && state.chickens > 0) {
+    const eggs = Math.floor(state.chickens * CHICKEN_EGG_FOOD_RATE);
+    foodGain += eggs;
+    const growth = Math.max(1, Math.floor(state.chickens * CHICKEN_GROWTH_RATE));
+    state.chickens += growth;
+    if (state.chickens > state.chickenCapacity) {
+      const culled = state.chickens - state.chickenCapacity;
+      const meatFood = culled * CHICKEN_SLAUGHTER_FOOD;
+      foodGain += meatFood;
+      state.chickens = state.chickenCapacity;
+      if (!state.chickenSacrificeNotified) {
+        state.chickenSacrificeNotified = true;
+        state.log.unshift({
+          year,
+          text: `The coop is full — ${culled} chicken${culled === 1 ? "" : "s"} culled to keep the flock at ${state.chickenCapacity} (+${meatFood} food). This will happen automatically each year; build a larger coop to raise the cap.`,
+          tone: "neutral",
+        });
+      }
+    }
+  }
+
   foodGain = Math.floor(foodGain);
   state.food += foodGain;
   state.wood += woodGain;
   state.stone += stoneGain;
+  state.wool += woolGain;
   state.fishingYears += fisherCount;
 
   // 2. Scouts reveal new tiles.
@@ -206,7 +281,7 @@ export function endYear(state: GameState): void {
 
   state.log.unshift({
     year,
-    text: `Harvest — +${foodGain} food, +${woodGain} wood, +${stoneGain} stone.${
+    text: `Harvest — +${foodGain} food, +${woodGain} wood, +${stoneGain} stone${woolGain > 0 ? `, +${woolGain} wool` : ""}.${
       revealed > 0 ? ` Scouts revealed ${revealed} new tile${revealed === 1 ? "" : "s"}.` : ""
     }`,
     tone: "neutral",
@@ -282,6 +357,16 @@ export function endYear(state: GameState): void {
   if (foodNet > 0) applyMorale(state, 2);
   else if (foodNet < 0) applyMorale(state, -3);
   state.food -= eaten;
+  {
+    const parts: string[] = [];
+    if (adults > 0) parts.push(`${adults} adult${adults === 1 ? "" : "s"} (${adults * FOOD_PER_ADULT} food)`);
+    if (kids > 0) parts.push(`${kids} child${kids === 1 ? "" : "ren"} (${kids * FOOD_PER_CHILD} food)`);
+    state.log.unshift({
+      year,
+      text: `Consumed ${eaten} food: ${parts.join(", ")}.`,
+      tone: "neutral",
+    });
+  }
   if (state.food < 0) {
     let shortfall = -state.food;
     state.food = 0;
@@ -405,6 +490,7 @@ function reconcileAllocation(state: GameState): void {
   let totalAssigned =
     state.scouts +
     currentWorkers(state, "farmer") +
+    currentWorkers(state, "shepherd") +
     currentWorkers(state, "woodcutter") +
     currentWorkers(state, "quarryman") +
     currentWorkers(state, "hunter") +
@@ -416,11 +502,10 @@ function reconcileAllocation(state: GameState): void {
   state.scouts -= scoutShed;
   over -= scoutShed;
 
-  // Shed order: scouts first (done above), then quarrymen, woodcutters, hunters,
-  // fishers, farmers last — food producers drop in increasing order of
-  // long-term reliability. Hunters go before fishers (forests exhaust, fish
-  // replenish); fishers go before farmers (fisher yields are variable).
-  const prodJobs: Array<Exclude<Job, "scout">> = ["quarryman", "woodcutter", "hunter", "fisher", "farmer"];
+  // Shed order: quarryman (no food) → shepherd (small food, wool is luxury) →
+  // woodcutter (no food) → hunter (food, finite) → fisher (food, variable) →
+  // farmer (food, most reliable) last.
+  const prodJobs: Array<Exclude<Job, "scout">> = ["quarryman", "shepherd", "woodcutter", "hunter", "fisher", "farmer"];
   for (const job of prodJobs) {
     while (over > 0) {
       const slot = findWorkerToRemove(state, job);
@@ -436,10 +521,13 @@ export function assignWorker(state: GameState, x: number, y: number, job: Exclud
   const t = state.tiles[y][x];
   if (t.workers >= t.capacity) return;
   if (job === "hunter") t.hunterWorkers += 1;
+  if (job === "shepherd") {
+    t.shepherdWorkers += 1;
+    // Initialise the herd on first shepherd arrival; persists if shepherd later leaves.
+    if (t.sheepHerd === 0) t.sheepHerd = SHEEP_STARTING_HERD;
+  }
   t.workers += 1;
   if (t.state === "wild") {
-    // Fishing starts immediately — nets cast, not fields tilled. All other jobs
-    // take a year of cultivation before they produce.
     if (t.terrain === "beach" || t.terrain === "river") {
       t.state = "worked";
     } else {
@@ -456,6 +544,7 @@ export function unassignWorker(state: GameState, x: number, y: number, job: Excl
   const t = state.tiles[y][x];
   if (t.workers <= 0) return;
   if (job === "hunter" && t.terrain === "forest") t.hunterWorkers = Math.max(0, t.hunterWorkers - 1);
+  if (job === "shepherd" && t.terrain === "grass") t.shepherdWorkers = Math.max(0, t.shepherdWorkers - 1);
   t.workers -= 1;
   if (t.workers === 0 && t.state === "cultivating") {
     t.state = "wild";
@@ -468,31 +557,41 @@ export function currentJobCount(state: GameState, job: Job): number {
   return currentWorkers(state, job);
 }
 
+// Patrician cargo model: the player can sell up to
+//   cargoCapacity - stockTotal + buyTotal units total.
+// Additionally, can't buy more than the merchant's stock of each resource.
 export function canExecuteTradeBasket(state: GameState, basket: TradeBasket): boolean {
-  const total = basketTotal(basket);
-  if (total <= 0 || total > TRADE_MAX_PER_VISIT) return false;
-  const resources: TradeResource[] = ["food", "wood", "stone"];
+  const visit = state.merchantVisit;
+  if (!visit) return false;
+  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
   for (const r of resources) {
     if (basket.sell[r] < 0 || basket.buy[r] < 0) return false;
-    // Must have enough of each resource to sell.
-    if (basket.sell[r] > state[r]) return false;
+    const playerStock = r === "wool" ? state.wool : (state as unknown as Record<string, number>)[r];
+    if (basket.sell[r] > playerStock) return false;
+    if (basket.buy[r] > visit.sellStock[r]) return false;
   }
-  // Net gold delta must leave gold non-negative.
+  const stockTotal = resources.reduce((s, r) => s + visit.sellStock[r], 0);
+  const buyTotal = resources.reduce((s, r) => s + basket.buy[r], 0);
+  const sellTotal = resources.reduce((s, r) => s + basket.sell[r], 0);
+  if (sellTotal > visit.cargoCapacity - stockTotal + buyTotal) return false;
+  if (sellTotal + buyTotal === 0) return false;
   const delta = basketGoldDelta(basket);
   if (state.gold + delta < 0) return false;
   return true;
 }
 
 export function executeTradeBasket(state: GameState, basket: TradeBasket): LogEntry {
-  const resources: TradeResource[] = ["food", "wood", "stone"];
+  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
   for (const r of resources) {
-    state[r] += basket.buy[r] - basket.sell[r];
+    const net = basket.buy[r] - basket.sell[r];
+    if (net === 0) continue;
+    if (r === "wool") state.wool += net;
+    else (state as unknown as Record<string, number>)[r] += net;
   }
   const delta = basketGoldDelta(basket);
   state.gold += delta;
-  state.pendingMerchant = false;
+  state.merchantVisit = null;
 
-  // Build a compact summary: "sold 3 wood, bought 2 stone, +X gold".
   const parts: string[] = [];
   for (const r of resources) {
     if (basket.sell[r] > 0) parts.push(`sold ${basket.sell[r]} ${r}`);
@@ -509,12 +608,31 @@ export function executeTradeBasket(state: GameState, basket: TradeBasket): LogEn
 }
 
 export function declineTrade(state: GameState): LogEntry {
-  state.pendingMerchant = false;
+  state.merchantVisit = null;
   return {
     year: state.year,
     text: "You wave the merchants on. They pack their wares and continue up the coast.",
     tone: "neutral",
   };
+}
+
+// Roll a fresh merchant visit — called from events.ts when the merchants event fires.
+export function rollMerchantVisit(): MerchantVisit {
+  const cargoCapacity = randInt(MERCHANT_CARGO_RANGE[0], MERCHANT_CARGO_RANGE[1]);
+  const stockResources: TradeResource[] = ["food", "wood", "stone"];
+  const picked = stockResources[randInt(0, stockResources.length - 1)];
+  const qty = randInt(MERCHANT_STOCK_UNITS[0], MERCHANT_STOCK_UNITS[1]);
+  return {
+    cargoCapacity,
+    sellStock: { food: 0, wood: 0, stone: 0, wool: 0, [picked]: qty },
+  };
+}
+
+// Logic for building the chicken coop — initialises the flock.
+export function buildChickenCoop(state: GameState): void {
+  state.buildings.chicken_coop = true;
+  state.chickens = CHICKEN_STARTING_FLOCK;
+  state.chickenCapacity = CHICKEN_CAP_INITIAL;
 }
 
 // Why a build is gated, or null if it's buildable. Used by canBuild *and* by
@@ -555,6 +673,10 @@ export function build(state: GameState, id: BuildingId): void {
   if (id === "long_house") {
     applyMorale(state, LONG_HOUSE_MORALE_BONUS);
     state.tiles[state.town.y][state.town.x].road = true;
+  }
+  if (id === "chicken_coop") {
+    state.chickens = CHICKEN_STARTING_FLOCK;
+    state.chickenCapacity = CHICKEN_CAP_INITIAL;
   }
   if (id === "shrine_of_anata") {
     state.log.unshift({ year: state.year, text: ANATA_BUILD_LINE, tone: "good" });
@@ -722,4 +844,27 @@ function resolveVoyage(state: GameState): void {
   state.boat = survivors.length === 0
     ? { status: "lost", returnYear: null, crew: [] }
     : { status: "docked", returnYear: null, crew: [] };
+}
+
+export function acceptRefugees(state: GameState): LogEntry {
+  const { count, year } = state.pendingRefugees!;
+  for (let i = 0; i < count; i++) state.pops.push(makeNewcomerPop());
+  applyMorale(state, MORALE_REFUGEE_ACCEPT);
+  state.pendingRefugees = null;
+  return {
+    year,
+    text: `The ${count === 1 ? "wanderer is" : `${count} refugees are`} welcomed. They eat with you from this day. (+${count} adult${count === 1 ? "" : "s"}, +${MORALE_REFUGEE_ACCEPT} morale)`,
+    tone: "good",
+  };
+}
+
+export function declineRefugees(state: GameState): LogEntry {
+  const { count, year } = state.pendingRefugees!;
+  applyMorale(state, MORALE_REFUGEE_REJECT);
+  state.pendingRefugees = null;
+  return {
+    year,
+    text: `The ${count === 1 ? "wanderer is" : "wanderers are"} turned away. It weighs on the settlement. (${MORALE_REFUGEE_REJECT} morale)`,
+    tone: "bad",
+  };
 }

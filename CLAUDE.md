@@ -33,7 +33,7 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage saves, single slot. Current key: `isle-of-cambrera-save-v19`. **Bump on any breaking state-shape change.** Old saves must fail loud (parse/validation error → `newGame()`), not load silently with `NaN`/`undefined` fields.
+- localStorage saves, single slot. Current key: `isle-of-cambrera-save-v21`. **Bump on any breaking state-shape change.** Old saves must fail loud (parse/validation error → `newGame()`), not load silently with `NaN`/`undefined` fields.
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
 Version history lives in git log + README. This file describes current state only.
@@ -124,7 +124,7 @@ Settlement-wide 0–100 stat (`state.morale`, `MORALE_START = 80`). **Lagging in
 - Famine death: −5 per pop.
 - Old-age death: `MORALE_OLD_AGE_DEATH = 2` per pop, +`MORALE_FOUNDER_EXTRA = 3` per founder. **Shrine of Anata softens this** to `ANATA_OLD_AGE_MORALE = 1` / founder extra `ANATA_FOUNDER_EXTRA = 2` once built — pyres and oral recital diffuse the grief without erasing it.
 - Coming-of-age: +2. Birth: +2.
-- Events: bountiful +5, locusts −4, mild_winter +3, bandits (−7 on death + founder extras, else −2), newcomers +4, forest_fire −3. Scripted waves: +2 per refugee.
+- Events: bountiful +5, locusts −4, mild_winter +3, bandits (−7 on death + founder extras, else −2), newcomers (accept +4, reject −3), forest_fire −3. Scripted waves: accept +4, reject −3.
 - Long House build: +8 one-time.
 
 **Gates and biases:**
@@ -171,10 +171,11 @@ One-time purchases in `types.ts:BUILDINGS`. `state.buildings: Record<BuildingId,
 | Hunting Lodge | 10 wood | — | +0.5 food/hunter/year (while forest lasts) | — |
 | Long House | 20 wood, 15 stone | 25 pops | +8 morale (one-time); `newcomers` weight ×3 with attract threshold; unlocks roads AND houses | — |
 | Shrine of Anata | 10 wood, 15 stone | 4 old-age deaths | Softens old-age morale hit (2→1, founder 3→2) | — |
+| Chicken Coop | 5 wood, 3 stone | — | Starts flock of `CHICKEN_STARTING_FLOCK=5`; eggs +`CHICKEN_EGG_FOOD_RATE=0.5` food/bird/yr; auto-culls surplus at `chickenCapacity=20` | — |
 
 **Houses are separate** from `BUILDINGS` because they're repeatable. `state.houses: number`, costs 8 wood + 3 stone each, gives +`HOUSE_CAPACITY = 6` pop capacity and +`HOUSE_FOOD_YIELD = 2` food/year from garden plots. Gated on Long House. API is `canBuildHouse`/`buildHouse`/`houseBlockerReason` in turn.ts — deliberately outside the one-time `canBuild`/`build` path. Future hook: taxation (Ostriv-style), not implemented yet.
 
-**Pop cap** (`popCapacity` in state.ts): `INITIAL_HUT_CAPACITY (20) + houses × 6`. Blocks **births only** — newcomers and refugees ignore the cap (you can't turn away people fleeing for their lives). The design arc: starter huts hold the band through year ~15–20; scripted waves and random newcomers push pop over 20 to reach the 25-pop Long House gate; Long House unlocks houses; each house lifts the cap by 6 and adds 2 food/year to offset the tighter child+elder consumption load under extended lifespan.
+**Pop cap** (`popCapacity` in state.ts): `INITIAL_HUT_CAPACITY (20) + houses × 6`. Blocks **births only** — accepted newcomers/refugees can push pop past the cap (you can't turn people away mid-arrival). The design arc: starter huts hold the band through year ~15–20; scripted waves and random newcomers push pop over 20 to reach the 25-pop Long House gate; Long House unlocks houses; each house lifts the cap by 6 and adds 2 food/year to offset the tighter child+elder consumption load under extended lifespan.
 
 **Blocker mechanism:** events carry optional `blockedBy: BuildingId` + `blockedText: string`. `rollEvent` picks normally, then if blocked, returns `blockedText` as a "good" tone log and skips `apply`. The blocked roll still consumes the year's event slot — the "averted" chronicle line *is* the event. Narratively satisfying and keeps the turn pipeline unchanged.
 
@@ -208,21 +209,46 @@ First tile-targeted construction. Click tile → "Build Road" button in tile inf
 
 **Roads extend reach, not production.** Don't add yield bonuses to road tiles without a fresh design conversation. Cost is stone-heavy because stone is the slowest resource — a long road is a real commitment, not a free terrain hack. Future mountain-pass road will cost significantly more and be the narrative unlock for contact with the far settlement.
 
-### Merchant trade modal
+### Shepherd / sheep ranching
 
-The `merchants` event sets `state.pendingMerchant = true` instead of auto-trading. `maybeShowTradeModal` (called from `redraw()` in main.ts) opens `#trade-overlay`.
+**Shepherd** is a grass-only job, mutually exclusive with farmers on the same tile. `tile.shepherdWorkers` tracks the count; `tile.workers - tile.shepherdWorkers` = farmers on that tile.
 
-**Trade basket.** A single visit can combine sells and buys. `TradeBasket = Record<TradeAction, Record<TradeResource, number>>` in types.ts; `canExecuteTradeBasket`/`executeTradeBasket` in turn.ts. UI is three rows (food/wood/stone) × two steppers (sell/buy). Global cap `TRADE_MAX_PER_VISIT = 5` applies to the **combined** unit count across all six steppers. `+Sell` disables when capped or when player has none; `+Buy` disables when capped or when the basket's net would leave gold negative. Confirm disabled unless basket is non-empty and valid.
+- **Yield (per shepherd/yr):** `SHEPHERD_FOOD_YIELD = 1` food (milk) + `SHEPHERD_WOOL_YIELD = 1` wool. Wool accumulates in `state.wool`.
+- **Herd:** `tile.sheepHerd` starts at `SHEEP_STARTING_HERD = 3` when the first shepherd claims a tile. Persists if shepherd is temporarily removed — the flock doesn't scatter. Grows `SHEEP_GROWTH_PER_YEAR = 2`/yr, capped at `SHEEP_HERD_CAP_PER_TILE = 12`.
+- **Standing slaughter order:** `state.sheepSlaughter` — set in the Livestock panel. Each year, up to that many sheep are culled across all shepherd tiles (furthest-first distribution), yielding `SHEEP_FOOD_PER_SLAUGHTER = 2` food each. First-fire one-shot notification, then silent.
+- **Fertility:** shepherds prefer fertile tiles (same `tileBonusForJob` logic as farmers).
+- **Render:** shepherd grass tiles render as `PASTURE_COLOR` (darker green); worked tiles show two white sheep pixel blobs (`drawPastureDecor`).
+- **Shed order:** quarryman → shepherd → woodcutter → hunter → fisher → farmer.
 
-**Rates** (`TRADE_RATES`): sell food/wood at 1 gold, stone at 2 gold; buy food/wood at 2 gold, stone at 4 gold. Asymmetric — merchants take their cut. Stone is double because it's the slowest to produce.
+### Chicken coop
 
-**End Year is blocked while `pendingMerchant` is true.** Button re-labels "Merchants waiting…". Keeps chronicle ordering clean; prevents silent skip via End Year spam.
+Settlement-level mechanic (not tile-based). No worker required.
 
-**Per-visit cap is the strategic constraint.** The basket lets the player express a two-sided swap ("sell 3 wood, buy 1 stone") instead of choosing one — but doesn't uncap liquidity. Don't add "trade again."
+- Build `chicken_coop` (5 wood, 3 stone) → sets `state.chickens = CHICKEN_STARTING_FLOCK = 5`, `state.chickenCapacity = CHICKEN_CAP_INITIAL = 20`.
+- **Each year (step 1):** `Math.floor(chickens × CHICKEN_EGG_FOOD_RATE=0.5)` food from eggs. Flock grows `max(1, floor(chickens × CHICKEN_GROWTH_RATE=0.4))`/yr. If flock exceeds `chickenCapacity`, surplus auto-culls at `CHICKEN_SLAUGHTER_FOOD=1` food/bird. One-shot notification on first auto-cull.
+- **Cap expansion:** not yet implemented (future building or upgrade).
 
-**Decline costs nothing.** Strategic tension is "spend gold on stone now, or wait for a cheaper visit that may never come."
+### Wool commodity
 
-**Flag-based pause, not async/await.** Keeps the turn pipeline synchronous and saves as plain JSON. If future events need the same semantics (e.g. raid-or-tribute choice), add a similar flag — don't introduce a Promise-driven turn loop.
+`state.wool` accumulates from shepherds. Shown in topbar when non-zero or any shepherd is active. Sold to merchants at `TRADE_RATES.sell.wool = 2` gold/unit. Merchants never buy wool back (sell-only column in trade modal). No other mechanic consumes wool yet — stockpiling for future textile/trade arc.
+
+### Merchant trade modal (Patrician cargo model)
+
+The `merchants` event creates a `state.merchantVisit: MerchantVisit | null`. `maybeShowTradeModal` (called from `redraw()` in main.ts) opens `#trade-overlay` when non-null.
+
+**`MerchantVisit`:** `{ cargoCapacity: number; sellStock: Record<TradeResource, number> }`. Rolled by `rollMerchantVisit()` in events.ts (inlined there — not in turn.ts, to avoid circular imports). `cargoCapacity` is `MERCHANT_CARGO_RANGE = [8,12]`; merchants stock one random resource at `MERCHANT_STOCK_UNITS = [2,4]` units.
+
+**Trade basket (Patrician model):** Constraint is `sellTotal ≤ cargoCapacity − stockTotal + buyTotal`. Buying from merchants frees their cargo slots so the player can sell more in the same visit. Four resources: food, wood, stone, wool. Wool is sell-only (merchants never bring fleece to a sheep settlement — buy column is permanently `—`).
+
+**Rates** (`TRADE_RATES`): sell food/wood 1g, stone 2g, wool 2g; buy food/wood 2g, stone 4g. Asymmetric — merchants take their cut. Don't add a buy rate for wool.
+
+**End Year is blocked while `state.merchantVisit !== null`.** Button re-labels "Merchants waiting…". Keeps chronicle ordering clean; prevents silent skip.
+
+**Decline costs nothing.** Strategic tension is "spend gold on stone now, or wait for a cheaper visit."
+
+**Object-based pause, not async/await.** Keeps the turn pipeline synchronous and saves as plain JSON. If future events need the same semantics (e.g. raid-or-tribute choice), add a similar nullable field — don't introduce a Promise-driven turn loop.
+
+**Circular dependency guard:** `rollMerchantVisit` lives in events.ts (inlined with a local `randInt`), NOT in turn.ts. events.ts imports from turn.ts (via `fireScriptedWave`/`rollEvent` ← turn.ts imports these) creating a cycle — any import FROM events.ts IN turn.ts creates a circular dependency. Keep this boundary clean.
 
 ### Scripted Exarum-survivor waves
 
@@ -232,8 +258,9 @@ At turn pipeline step 4, if a wave's year matches and `fired === false`, it **re
 
 - Waves **replace**, not augment — avoids mixing "survivors + locusts" in one chronicle turn.
 - Refugee count (2 adults) matches the random `newcomers` event so the arc doesn't secretly snowball the economy.
+- **Both waves and the random newcomers event are now optional.** They set `state.pendingRefugees` instead of pushing pops. A modal (same pattern as trade modal, opened from `redraw()`) prompts accept (+4 morale) or decline (−3 morale). Accepted refugees arrive next year, not the turn they appear. Boat crew and boat-found refugees are still automatic — they're your own people returning.
 - `fired` flag (not a cleared array) is required because save/load must persist which played.
-- Extension: new scripted event = new `ScriptedWaveId`, append to targets, write text. No turn.ts or state.ts churn.
+- Extension: new scripted event = new `ScriptedWaveId`, append to targets, write text and brief pending text. No turn.ts or state.ts churn.
 
 ### Departure wizard
 
@@ -273,7 +300,7 @@ Six-step pre-game wizard. `state.departure: DepartureChoices` persists the picks
 2.   Scouts reveal frontier; auto-retire scouts if no frontier remains
 3.   Advance tile states (cultivating→worked, worked→fallow, fallow→wild)
 4.   Scripted wave (if due) OR random event
-5.   Food consumption; famine kills pops (youngest first)
+5.   Food consumption; emit consumption chronicle line; famine kills pops (youngest first)
 6.   Reconcile allocation (shed workers if adults died — scout first, then furthest)
 7.   Growth check (food ≥ pop × 3 AND morale ≥ MORALE_GROWTH_GATE → +1 baby)
 8.   Emit population tally; game-over check; year++

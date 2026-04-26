@@ -546,6 +546,7 @@ html, body {
   border-left: 3px solid #6b3f0f;
 }
 #trade-panel .trade-onhand strong { color: #6b3f0f; }
+#trade-panel .trade-merchant-stock { margin-top: -0.5rem; margin-bottom: 1rem; border-left-color: #8a6535; font-size: 0.88rem; }
 
 #trade-panel .basket-grid {
   margin-bottom: 1rem;
@@ -659,6 +660,89 @@ html, body {
 }
 #trade-panel .trade-buttons .trade-decline:hover { background: rgba(92, 67, 32, 0.15); }
 
+#refugees-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+  padding: 1.5rem;
+}
+#refugees-overlay.hidden { display: none; }
+
+#refugees-panel {
+  max-width: 460px;
+  width: 100%;
+  background:
+    radial-gradient(ellipse at 20% 10%, rgba(120, 80, 40, 0.12), transparent 60%),
+    linear-gradient(180deg, #e9d7a9 0%, #d9c28a 100%);
+  color: #3a2814;
+  border: 2px solid #5c4320;
+  box-shadow:
+    0 0 0 4px #a88556 inset,
+    0 0 24px rgba(0, 0, 0, 0.6);
+  padding: 1.75rem;
+  font-family: "Georgia", "Times New Roman", serif;
+}
+
+#refugees-panel h2 {
+  margin: 0 0 0.75rem 0;
+  text-align: center;
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+  color: #6b3f0f;
+  text-transform: uppercase;
+  font-weight: normal;
+}
+
+#refugees-panel .refugees-flavor {
+  font-style: italic;
+  margin: 0 0 1rem 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+#refugees-panel .refugees-impact {
+  margin: 0 0 1.25rem 0;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(92, 67, 32, 0.1);
+  border-left: 3px solid #6b3f0f;
+}
+
+#refugees-panel .refugees-impact strong { color: #6b3f0f; }
+
+#refugees-panel .refugees-buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+#refugees-panel .refugees-buttons button {
+  padding: 0.5rem 1.25rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  text-transform: uppercase;
+  border: 2px solid #3a2814;
+}
+
+#refugees-panel .refugees-accept {
+  background: #6b3f0f;
+  color: #f0e2b8;
+}
+#refugees-panel .refugees-accept:hover { background: #8a5415; }
+
+#refugees-panel .refugees-decline {
+  background: transparent;
+  color: #3a2814;
+}
+#refugees-panel .refugees-decline:hover { background: rgba(92, 67, 32, 0.15); }
+
 #departure-overlay {
   position: fixed;
   inset: 0;
@@ -753,4 +837,212 @@ html, body {
   border-top: 1px dashed rgba(92, 67, 32, 0.4);
   padding-top: 0.4rem;
   line-height: 1.4;
+}
+
+/* ─── Feedback strip + modal ─────────────────────────────────────────────── */
+
+#feedback-strip {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-bottom: none;
+  padding: 0.4rem 0.75rem;
+}
+
+#feedback-strip button {
+  width: 100%;
+  padding: 0.3rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed var(--panel-edge);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+#feedback-strip button:hover { color: var(--ink); border-color: var(--gold); }
+
+#feedback-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 88;
+  padding: 1.5rem;
+}
+#feedback-overlay.hidden { display: none; }
+
+#feedback-panel {
+  max-width: 420px;
+  width: 100%;
+  background: var(--panel);
+  border: 2px solid var(--panel-edge);
+  padding: 1.5rem;
+}
+
+#feedback-panel h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.feedback-intro {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0 0 1rem;
+}
+
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fb-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.feedback-form input[type="text"],
+.feedback-form textarea {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--panel-edge);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.88rem;
+  padding: 0.4rem 0.55rem;
+  resize: vertical;
+}
+.feedback-form input[type="text"]:focus,
+.feedback-form textarea:focus { outline: 1px solid var(--gold); }
+
+.fb-rating {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.fb-star {
+  width: 30px;
+  height: 30px;
+  background: var(--panel-edge);
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.fb-star:hover,
+.fb-star.selected { background: var(--gold); color: #1a1410; }
+
+.fb-char-count {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.feedback-version {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.feedback-version strong { color: var(--gold); }
+
+.feedback-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.feedback-buttons button {
+  flex: 1;
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  border: none;
+  background: var(--gold);
+  color: #1a1410;
+}
+.feedback-buttons button:hover:not(:disabled) { background: #e8c060; }
+.feedback-buttons button:disabled { opacity: 0.4; cursor: not-allowed; }
+.feedback-buttons button.secondary { background: var(--panel-edge); color: var(--ink); }
+.feedback-buttons button.secondary:hover { background: #5c4933; }
+
+#fb-status {
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
+  min-height: 1.1em;
+}
+.fb-status-ok { color: var(--good); }
+.fb-status-error { color: var(--danger); }
+
+/* ─── Livestock panel ────────────────────────────────────────────────────── */
+
+#livestock-panel {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.livestock-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0;
+}
+
+.livestock-label {
+  color: var(--muted);
+  min-width: 5.5ch;
+}
+
+.livestock-value {
+  font-weight: bold;
+  color: var(--ink);
+}
+
+.livestock-hint {
+  color: var(--good);
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+
+.livestock-qty {
+  min-width: 2ch;
+  text-align: center;
+  color: var(--gold);
+  font-weight: bold;
+}
+
+.livestock-step {
+  background: var(--panel-edge);
+  color: var(--ink);
+  border: none;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0;
+  line-height: 1;
+}
+.livestock-step:hover:not(:disabled) { background: #5c4933; }
+.livestock-step:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.livestock-note {
+  color: var(--muted);
+  font-size: 0.75rem;
+  padding: 0.1rem 0 0.3rem 0;
+}
+
+.livestock-divider {
+  border-top: 1px dashed var(--panel-edge);
+  margin: 0.4rem 0;
 }

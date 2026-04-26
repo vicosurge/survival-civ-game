@@ -46,6 +46,8 @@ export const QUARRY_EXHAUSTED_LINE =
 export const JOB_TOOLTIPS: Record<string, string> = {
   farmer:
     "Works grass tiles. +2 food/year per worker, +1 more on fertile soil. Sustainable — fields don't run dry.",
+  shepherd:
+    "Works grass tiles — exclusive with farmers. +1 food/year (milk) and +1 wool/year per worker. The flock grows each year; set a slaughter order in the Livestock panel for extra food. Fertile tiles make better pasture.",
   woodcutter:
     "Works forest tiles. +2 wood/year per worker. Trees regrow — a forest never exhausts to woodcutters.",
   hunter:

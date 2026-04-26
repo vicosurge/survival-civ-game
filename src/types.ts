@@ -1,14 +1,15 @@
-export const VERSION = "v0.5.1";
+export const VERSION = "v0.6";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
 
-export type Job = "farmer" | "woodcutter" | "quarryman" | "hunter" | "fisher" | "scout";
+export type Job = "farmer" | "shepherd" | "woodcutter" | "quarryman" | "hunter" | "fisher" | "scout";
 
-export const JOBS: Job[] = ["farmer", "hunter", "fisher", "woodcutter", "quarryman", "scout"];
+export const JOBS: Job[] = ["farmer", "shepherd", "hunter", "fisher", "woodcutter", "quarryman", "scout"];
 
 export const JOB_LABEL: Record<Job, string> = {
   farmer: "Farmer",
+  shepherd: "Shepherd",
   woodcutter: "Woodcutter",
   quarryman: "Quarryman",
   hunter: "Hunter",
@@ -28,6 +29,7 @@ export type TileState = "wild" | "cultivating" | "worked" | "fallow" | "exhauste
 // Woodcutter and hunter both work forest and can coexist on the same tile.
 export const JOB_TERRAINS: Record<Exclude<Job, "scout">, Terrain[]> = {
   farmer: ["grass"],
+  shepherd: ["grass"],
   woodcutter: ["forest"],
   quarryman: ["stone"],
   hunter: ["forest"],
@@ -38,15 +40,17 @@ export interface Tile {
   terrain: Terrain;
   discovered: boolean;
   state: TileState;
-  capacity: number;       // max workers this tile can hold; 0 for non-workable terrain
-  workers: number;        // currently assigned workers (0..capacity); includes both hunters and woodcutters
-  hunterWorkers: number;  // forest only: subset of workers that are hunters; woodcutters = workers - hunterWorkers
-  gameExhausted: boolean; // forest only: game reserve depleted — hunter slot permanently closed, woodcutters may remain
-  reserve: number;        // remaining resource units (forest game / quarry stone); 0 for grass/beach/river
-  fertility: number;      // grass tiles only: +0 normal, +1 fertile — adds to per-worker farmer yield
-  fishRichness: number;   // beach/river only: +0 normal (rolls 1–3 food/worker), +1 rich (rolls 2–4, crab/tuna)
-  yearsInState: number;   // how long in current state — drives cultivating→worked and fallow→wild
-  road: boolean;          // a road has been built here — acts as a reach anchor like a worked tile
+  capacity: number;          // max workers this tile can hold; 0 for non-workable terrain
+  workers: number;           // currently assigned workers (0..capacity)
+  hunterWorkers: number;     // forest only: subset that are hunters; woodcutters = workers - hunterWorkers
+  shepherdWorkers: number;   // grass only: subset that are shepherds; farmers and shepherds are exclusive on a tile
+  gameExhausted: boolean;    // forest only: game reserve depleted — hunter slot permanently closed
+  reserve: number;           // remaining resource units (forest game / quarry stone)
+  sheepHerd: number;         // grass shepherd tiles: current herd size; persists if shepherd is temporarily removed
+  fertility: number;         // grass only: +0 normal, +1 fertile — adds to per-worker farmer yield
+  fishRichness: number;      // beach/river only: +0 normal (1–3 food), +1 rich (2–4, crab/tuna)
+  yearsInState: number;      // how long in current state — drives cultivating→worked and fallow→wild
+  road: boolean;             // a road has been built here — acts as a reach anchor like a worked tile
 }
 
 export interface LogEntry {
@@ -84,9 +88,18 @@ export interface ScriptedWave {
 }
 
 export type TradeAction = "sell" | "buy";
-export type TradeResource = "food" | "wood" | "stone";
+export type TradeResource = "food" | "wood" | "stone" | "wool";
 
-export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "long_house" | "shrine_of_anata";
+export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "long_house" | "shrine_of_anata" | "chicken_coop";
+
+// A pending merchant visit with cargo capacity and what they brought to sell.
+// Replaces the old `pendingMerchant: boolean` flag. The cargo model: merchants
+// arrive with cargoCapacity total slots, some already occupied by their sellStock.
+// Buying from them frees those slots so the player can sell more in the same visit.
+export interface MerchantVisit {
+  cargoCapacity: number;
+  sellStock: Record<TradeResource, number>;
+}
 
 // Long House civic building requirements and effect.
 export const LONG_HOUSE_POP_GATE = 25;
@@ -300,28 +313,32 @@ export const BANDIT_PURSUIT_YEARS = 5;
 
 export interface GameState {
   year: number;
-  pops: Pop[];         // replaces the flat population counter
+  pops: Pop[];
   food: number;
   wood: number;
   stone: number;
   gold: number;
-  morale: number;      // 0–100; lagging indicator of how the settlement is faring
+  wool: number;          // accumulated wool from shepherd tiles; sold to merchants
+  morale: number;        // 0–100; lagging indicator of settlement health
   tiles: Tile[][];
   town: { x: number; y: number };
-  scouts: number;      // standalone — scouts don't occupy tiles
+  scouts: number;
   boat: Boat;
   scriptedWaves: ScriptedWave[];
-  pendingMerchant: boolean;  // merchant visit awaiting trade/decline — blocks end-year
+  merchantVisit: MerchantVisit | null;  // pending merchant visit; blocks end-year
+  pendingRefugees: { count: number; text: string; year: number } | null;
   buildings: Record<BuildingId, boolean>;
-  houses: number;              // repeatable dwellings built post-Long-House; raise pop cap + yield garden food
-  oldAgeDeathsTotal: number;   // cumulative old-age deaths over the whole game; gates Shrine of Anata unlock
-  departure: DepartureChoices;  // every choice made in the pre-game wizard
+  houses: number;
+  sheepSlaughter: number;             // standing order: sheep to cull per year across all shepherd tiles
+  sheepSlaughterNotified: boolean;    // one-shot: player told about the slaughter mechanic
+  chickens: number;                   // current flock size (0 when coop not yet built)
+  chickenCapacity: number;            // hard flock cap; excess auto-culled each year
+  chickenSacrificeNotified: boolean;  // one-shot: player told about auto-culling
+  oldAgeDeathsTotal: number;
+  departure: DepartureChoices;
   log: LogEntry[];
   gameOver: boolean;
   selectedTile: { x: number; y: number } | null;
-  // Cumulative fisher-years. Incremented by current fisher count each turn (step
-  //   1). Converts into a crew-loss reduction for ship voyages — see
-  //   fishingLossReduction in turn.ts. Maritime experience builds slowly.
   fishingYears: number;
 }
 
@@ -354,14 +371,10 @@ export const FOOD_PER_CHILD = 1;
 // of the rolled range — actual per-year yield is randomised (see FISHER_YIELD_*).
 export const YIELD_PER_WORKER: Record<Exclude<Job, "scout">, number> = {
   farmer: 2,
+  shepherd: 1,  // milk food only; wool tracked separately via SHEPHERD_WOOL_YIELD
   woodcutter: 2,
   quarryman: 1,
-  // 3 food/year: hunters eat 2 (like any adult), net +1 surplus. Same as a
-  // farmer on fertile grass, but finite — the forest reserve is shared with
-  // woodcutters and depletes the same way.
   hunter: 3,
-  // Projection average. Baseline fishing tile rolls 1–3 food/worker/year
-  // (avg 2, break-even), rich tile rolls 2–4 (avg 3, net +1 surplus).
   fisher: 2,
 };
 
@@ -428,34 +441,38 @@ export const SCRIPTED_WAVE_JITTER = 3;
 export const SCRIPTED_WAVE_MIN_GAP = 3;
 export const SCRIPTED_WAVE_REFUGEES = 2;
 
-// Merchant trade rates — asymmetric so there's a real choice. Sell = settlement
-// parts with the resource, receives gold. Buy = settlement spends gold, receives
-// the resource.
+// Merchant trade rates — asymmetric so there's a real choice.
+// Wool is a sell-only commodity (merchants don't bring fleece to a sheep settlement).
 export const TRADE_RATES: Record<TradeAction, Record<TradeResource, number>> = {
-  sell: { food: 1, wood: 1, stone: 2 },
-  buy: { food: 2, wood: 2, stone: 4 },
+  sell: { food: 1, wood: 1, stone: 2, wool: 2 },
+  buy:  { food: 2, wood: 2, stone: 4, wool: 4 },
 };
-export const TRADE_MAX_PER_VISIT = 5;
 
-// A merchant visit's order sheet. The player can mix buys and sells in the same
-//   visit, bounded by a combined unit cap (TRADE_MAX_PER_VISIT).
+// Patrician cargo model: merchants arrive with a wagon of capacity MERCHANT_CARGO_RANGE
+// slots. Their sellStock occupies some slots; buying from them frees capacity so
+// the player can sell more. Replaces the old flat TRADE_MAX_PER_VISIT = 5 cap.
+export const MERCHANT_CARGO_RANGE: [number, number] = [8, 12];
+export const MERCHANT_STOCK_UNITS: [number, number] = [2, 4];
+
 export type TradeBasket = Record<TradeAction, Record<TradeResource, number>>;
 
 export function emptyBasket(): TradeBasket {
-  return { sell: { food: 0, wood: 0, stone: 0 }, buy: { food: 0, wood: 0, stone: 0 } };
+  return {
+    sell: { food: 0, wood: 0, stone: 0, wool: 0 },
+    buy:  { food: 0, wood: 0, stone: 0, wool: 0 },
+  };
 }
 
 export function basketTotal(basket: TradeBasket): number {
   return (
-    basket.sell.food + basket.sell.wood + basket.sell.stone
-    + basket.buy.food + basket.buy.wood + basket.buy.stone
+    basket.sell.food + basket.sell.wood + basket.sell.stone + basket.sell.wool
+    + basket.buy.food + basket.buy.wood + basket.buy.stone + basket.buy.wool
   );
 }
 
-// Positive = settlement gains gold; negative = settlement spends gold.
 export function basketGoldDelta(basket: TradeBasket): number {
   let delta = 0;
-  const resources: TradeResource[] = ["food", "wood", "stone"];
+  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
   for (const r of resources) {
     delta += basket.sell[r] * TRADE_RATES.sell[r];
     delta -= basket.buy[r]  * TRADE_RATES.buy[r];
@@ -474,6 +491,29 @@ export const MORALE_ATTRACT_THRESHOLD = 80; // at/above, newcomers event weight 
 export const MORALE_PREY_THRESHOLD = 30;    // at/below, bandits event weight ×2
 export const MORALE_OLD_AGE_DEATH = 2;      // per elder passing of old age
 export const MORALE_FOUNDER_EXTRA = 3;      // extra penalty per founder death (stacks with base)
+export const MORALE_REFUGEE_ACCEPT = 4;     // morale on welcoming refugees
+export const MORALE_REFUGEE_REJECT = -3;    // morale on turning refugees away
+
+// ─── Shepherd / sheep ranching ────────────────────────────────────────────────
+// Shepherd job works grass tiles exclusively — farmers and shepherds can't share
+// a tile. The tile's sheepHerd persists even if the shepherd is temporarily
+// removed, so pulling a shepherd doesn't scatter the flock.
+export const SHEPHERD_FOOD_YIELD = 1;       // milk food per shepherd per year
+export const SHEPHERD_WOOL_YIELD = 1;       // wool per shepherd per year
+export const SHEEP_STARTING_HERD = 3;       // herd size when the first shepherd claims a tile
+export const SHEEP_GROWTH_PER_YEAR = 2;     // sheep added per shepherd tile per year (flat, not %)
+export const SHEEP_HERD_CAP_PER_TILE = 12;  // herd never exceeds this per tile
+export const SHEEP_FOOD_PER_SLAUGHTER = 2;  // food per sheep culled from the standing order
+
+// ─── Chicken coop ─────────────────────────────────────────────────────────────
+// Settlement-level mechanic — not tile-based. The coop initialises a flock that
+// grows quickly. When flock exceeds chickenCapacity, the surplus is auto-culled
+// each year (player is notified on first occurrence). No worker required.
+export const CHICKEN_STARTING_FLOCK = 5;
+export const CHICKEN_CAP_INITIAL = 20;
+export const CHICKEN_GROWTH_RATE = 0.4;      // fractional annual growth; min +1/yr
+export const CHICKEN_EGG_FOOD_RATE = 0.5;   // food per chicken per year (eggs)
+export const CHICKEN_SLAUGHTER_FOOD = 1;    // food per surplus chicken culled
 
 // One-time-purchase settlement upgrades. Each blocks a specific negative event
 // (see events.ts: blockedBy + blockedText). No durability; no multiples.
@@ -514,6 +554,12 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     description: "A stone cairn to the goddess of life. Pyres replace silent graves, and an elder keeps the names in memory. Old-age losses weigh less on the village.",
     cost: { wood: 10, stone: 15 },
   },
+  chicken_coop: {
+    id: "chicken_coop",
+    name: "Chicken Coop",
+    description: `Starts a flock of ${CHICKEN_STARTING_FLOCK} chickens. Eggs yield food each year; the flock grows quickly and surplus birds are culled automatically at the cap.`,
+    cost: { wood: 5, stone: 3 },
+  },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v19";
+export const SAVE_KEY = "isle-of-cambrera-save-v21";

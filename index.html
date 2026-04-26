@@ -19,6 +19,9 @@
 
       <main id="main">
         <aside id="chronicle-panel">
+          <div id="feedback-strip">
+            <button id="feedback-btn">Leave Feedback</button>
+          </div>
           <section id="log-section">
             <h2>Chronicle</h2>
             <div id="log"></div>
@@ -35,6 +38,11 @@
             <h2>Villagers</h2>
             <div id="villager-summary"></div>
             <div id="job-controls"></div>
+          </section>
+
+          <section id="livestock-section" class="hidden">
+            <h2>Livestock</h2>
+            <div id="livestock-panel"></div>
           </section>
 
           <section id="buildings-section">
@@ -59,8 +67,33 @@
         </aside>
       </main>
     </div>
+    <div id="feedback-overlay" class="hidden" aria-hidden="true">
+      <div id="feedback-panel" role="dialog" aria-labelledby="feedback-title">
+        <h2 id="feedback-title">Leave Feedback</h2>
+        <p class="feedback-intro">Help improve Isle of Cambrera. Takes about a minute.</p>
+        <div class="feedback-form">
+          <label class="fb-label">Your name or handle
+            <input type="text" id="fb-name" maxlength="80" autocomplete="off" placeholder="Anonymous" />
+          </label>
+          <div class="fb-label">Rating
+            <div class="fb-rating" id="fb-rating" role="group" aria-label="Rating 1 to 5"></div>
+          </div>
+          <label class="fb-label">Feedback
+            <textarea id="fb-text" maxlength="1000" rows="5" placeholder="What worked? What didn't? Anything that confused you?"></textarea>
+            <span class="fb-char-count" id="fb-char-count">0 / 1000</span>
+          </label>
+          <div class="feedback-version">Version: <strong id="fb-version"></strong></div>
+        </div>
+        <div class="feedback-buttons">
+          <button id="fb-submit">Send</button>
+          <button id="fb-cancel" class="secondary">Cancel</button>
+        </div>
+        <div id="fb-status"></div>
+      </div>
+    </div>
     <div id="departure-overlay" class="hidden" aria-hidden="true"></div>
     <div id="trade-overlay" class="hidden" aria-hidden="true"></div>
+    <div id="refugees-overlay" class="hidden" aria-hidden="true"></div>
     <div id="intro-overlay" class="hidden" aria-hidden="true">
       <div id="intro-papyrus" role="dialog" aria-labelledby="intro-title">
         <h2 id="intro-title">Cambrera</h2>

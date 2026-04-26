@@ -82,8 +82,10 @@ function makeTile(terrain: Terrain): Tile {
     capacity,
     workers: 0,
     hunterWorkers: 0,
+    shepherdWorkers: 0,
     gameExhausted: false,
     reserve,
+    sheepHerd: 0,
     fertility,
     fishRichness,
     yearsInState: 0,
@@ -221,12 +223,15 @@ export function revealAround(tiles: Tile[][], cx: number, cy: number, radius: nu
   return revealed;
 }
 
-// Reveal N random undiscovered tiles adjacent to the already-discovered frontier.
+// Reveal N random undiscovered land tiles adjacent to the already-discovered
+// frontier. Water and mountain tiles are excluded — scouts travel on foot.
 export function exploreFrontier(tiles: Tile[][], count: number): number {
   const frontier: Array<[number, number]> = [];
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
-      if (tiles[y][x].discovered) continue;
+      const t = tiles[y][x];
+      if (t.discovered) continue;
+      if (t.terrain === "water" || t.terrain === "mountain") continue;
       if (hasDiscoveredNeighbor(tiles, x, y)) frontier.push([x, y]);
     }
   }
@@ -240,13 +245,13 @@ export function exploreFrontier(tiles: Tile[][], count: number): number {
   return revealed;
 }
 
-// Is there any undiscovered tile that could still be revealed by a scout? An
-//   undiscovered tile with at least one discovered neighbour qualifies as
-//   frontier. When there's no frontier left, scouts have nothing to do.
+// Is there any undiscovered land tile a scout could still reveal?
 export function hasUndiscoveredFrontier(tiles: Tile[][]): boolean {
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
-      if (tiles[y][x].discovered) continue;
+      const t = tiles[y][x];
+      if (t.discovered) continue;
+      if (t.terrain === "water" || t.terrain === "mountain") continue;
       if (hasDiscoveredNeighbor(tiles, x, y)) return true;
     }
   }
@@ -298,15 +303,18 @@ function tileAcceptsWorker(tile: Tile, job: Exclude<Job, "scout">): boolean {
   if (!JOB_TERRAINS[job].includes(tile.terrain)) return false;
   if (tile.state === "exhausted") return false;
   if (job === "hunter" && tile.gameExhausted) return false;
+  // Farmers and shepherds are mutually exclusive on a grass tile.
+  if (tile.terrain === "grass") {
+    if (job === "farmer" && tile.shepherdWorkers > 0) return false;
+    if (job === "shepherd" && tile.workers > tile.shepherdWorkers) return false;
+  }
   return tile.workers < tile.capacity;
 }
 
 // The "tile bonus" the allocator optimises for when picking a tile for a given
-// job. Farmers care about grass fertility; fishers care about rich fishing
-// waters. Woodcutter/hunter/quarryman don't have a bonus dimension — 0 for
-// them, so distance (the tiebreaker) wins.
+// job. Both farmers and shepherds prefer fertile grass; fishers prefer rich waters.
 function tileBonusForJob(tile: Tile, job: Exclude<Job, "scout">): number {
-  if (job === "farmer") return tile.fertility;
+  if (job === "farmer" || job === "shepherd") return tile.fertility;
   if (job === "fisher") return tile.fishRichness;
   return 0;
 }
@@ -345,8 +353,8 @@ export function totalReachableCapacity(state: GameState, job: Exclude<Job, "scou
   return total;
 }
 
-// Sum of workers for a given job. Forest tiles track hunters and woodcutters
-// separately via hunterWorkers; all other terrain types have homogeneous workers.
+// Sum of workers for a given job. Forest tiles split hunters/woodcutters via
+// hunterWorkers; grass tiles split farmers/shepherds via shepherdWorkers.
 export function currentWorkers(state: GameState, job: Exclude<Job, "scout">): number {
   const terrains = JOB_TERRAINS[job];
   let n = 0;
@@ -356,6 +364,8 @@ export function currentWorkers(state: GameState, job: Exclude<Job, "scout">): nu
       if (!terrains.includes(t.terrain)) continue;
       if (t.terrain === "forest") {
         n += job === "hunter" ? t.hunterWorkers : t.workers - t.hunterWorkers;
+      } else if (t.terrain === "grass") {
+        n += job === "shepherd" ? t.shepherdWorkers : t.workers - t.shepherdWorkers;
       } else {
         n += t.workers;
       }
@@ -379,6 +389,9 @@ export function findWorkerToRemove(
       if (t.terrain === "forest") {
         if (job === "hunter" && t.hunterWorkers <= 0) continue;
         if (job === "woodcutter" && t.workers - t.hunterWorkers <= 0) continue;
+      } else if (t.terrain === "grass") {
+        if (job === "shepherd" && t.shepherdWorkers <= 0) continue;
+        if (job === "farmer" && t.workers - t.shepherdWorkers <= 0) continue;
       } else if (t.workers <= 0) {
         continue;
       }

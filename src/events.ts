@@ -1,5 +1,5 @@
 import { exploreFrontier, hasUndiscoveredFrontier } from "./map";
-import { applyMorale, makeNewcomerPop } from "./state";
+import { applyMorale } from "./state";
 import {
   ADULT_AGE,
   ALARM_RESPONSES,
@@ -8,13 +8,32 @@ import {
   DEPARTURE_TIMINGS,
   GameState,
   LogEntry,
+  MERCHANT_CARGO_RANGE,
+  MERCHANT_STOCK_UNITS,
+  MerchantVisit,
   MORALE_ATTRACT_THRESHOLD,
   MORALE_FOUNDER_EXTRA,
   MORALE_PREY_THRESHOLD,
   SCRIPTED_WAVE_REFUGEES,
   ScriptedWaveId,
   SHIP_FATES,
+  TradeResource,
 } from "./types";
+
+function randInt(lo: number, hi: number): number {
+  return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+}
+
+function rollMerchantVisit(): MerchantVisit {
+  const cargoCapacity = randInt(MERCHANT_CARGO_RANGE[0], MERCHANT_CARGO_RANGE[1]);
+  const stockResources: TradeResource[] = ["food", "wood", "stone"];
+  const picked = stockResources[randInt(0, stockResources.length - 1)];
+  const qty = randInt(MERCHANT_STOCK_UNITS[0], MERCHANT_STOCK_UNITS[1]);
+  return {
+    cargoCapacity,
+    sellStock: { food: 0, wood: 0, stone: 0, wool: 0, [picked]: qty },
+  };
+}
 
 interface EventDef {
   id: string;
@@ -70,10 +89,16 @@ const EVENTS: EventDef[] = [
     id: "merchants",
     weight: 9,
     apply: (s) => {
-      s.pendingMerchant = true;
+      s.merchantVisit = rollMerchantVisit();
+      const stock = s.merchantVisit.sellStock;
+      const offering = (["food", "wood", "stone"] as const)
+        .filter((r) => stock[r] > 0)
+        .map((r) => `${stock[r]} ${r}`)
+        .join(", ");
+      const offeringText = offering ? ` They have ${offering} to sell.` : "";
       return {
         year: s.year,
-        text: "Travelling merchants lay out their wares at the edge of the clearing. They await your decision before moving on.",
+        text: `Travelling merchants lay out their wares at the edge of the clearing.${offeringText} They await your decision before moving on.`,
         tone: "neutral",
       };
     },
@@ -135,12 +160,15 @@ const EVENTS: EventDef[] = [
     id: "newcomers",
     weight: 6,
     apply: (s) => {
-      s.pops.push(makeNewcomerPop(), makeNewcomerPop());
-      applyMorale(s, 4);
+      s.pendingRefugees = {
+        count: 2,
+        text: "Two wanderers arrive at your gates, gaunt and road-worn, asking for shelter.",
+        year: s.year,
+      };
       return {
         year: s.year,
-        text: "Two wanderers arrive seeking refuge. You take them in. (+2 adults)",
-        tone: "good",
+        text: "Two wanderers arrive seeking refuge — they wait at the gate for your word.",
+        tone: "neutral",
       };
     },
   },
@@ -181,21 +209,21 @@ const EVENTS: EventDef[] = [
 ];
 
 // Lore-heavy one-shot events fired at scripted years (see SCRIPTED_WAVE_TARGETS).
-// Each brings SCRIPTED_WAVE_REFUGEES adult refugees plus a chronicle-length log
-// entry revealing another chapter of Exarum's fall.
+// Each brings SCRIPTED_WAVE_REFUGEES adult refugees. The player must accept or
+// decline; the full narrative text is shown in the decision modal, and a brief
+// pending line goes into the chronicle while awaiting the choice.
 const SCRIPTED_WAVE_TEXT: Record<ScriptedWaveId, string> = {
   wave1:
     "Battered travellers beach on Cambrera's shore. They speak of Exarum — " +
     "the south of the continent ravaged, the draconian host marching without " +
     "pause. Emperor Klon himself leads the defence of Destum, the capital, " +
-    "now under siege. None, they say, have found a way to stop the advance. " +
-    "(+2 adults)",
+    "now under siege. None, they say, have found a way to stop the advance.",
   wave2:
     "More survivors reach the isle, carrying darker news. Emperor Klon is " +
     "dead. The Empire has nearly crumbled beneath the draconian advance. " +
     "Villages burn; a handful still stand. Destum, the old capital of the " +
     "South, now lies in complete ruins — and Cuarecam has been claimed as " +
-    "the new draconian capital. (+2 adults)",
+    "the new draconian capital.",
   wave3:
     "A gaunt band stumbles ashore with the dirge of Exarum on their lips. " +
     "The Empire has fallen — Duras, Vizqe, Drazna, Harab, and Bludris all " +
@@ -203,13 +231,22 @@ const SCRIPTED_WAVE_TEXT: Record<ScriptedWaveId, string> = {
     "Captain Amezcua rallies what remains of Klon's army beneath the old " +
     "imperial colours. How long the city stands, none can say. Worse still: " +
     "some among the newcomers whisper that the draconians may know of " +
-    "Cambrera now — that we may be next. (+2 adults)",
+    "Cambrera now — that we may be next.",
+};
+
+const SCRIPTED_WAVE_PENDING: Record<ScriptedWaveId, string> = {
+  wave1: "Survivors from across the sea arrive at your shores — they await your word at the gate.",
+  wave2: "More survivors of the Exarum war reach Cambrera — they wait for your decision.",
+  wave3: "A gaunt band stumbles ashore with the dirge of Exarum on their lips — they await your word.",
 };
 
 export function fireScriptedWave(state: GameState, id: ScriptedWaveId): LogEntry {
-  for (let i = 0; i < SCRIPTED_WAVE_REFUGEES; i++) state.pops.push(makeNewcomerPop());
-  applyMorale(state, 2 * SCRIPTED_WAVE_REFUGEES);
-  return { year: state.year, text: SCRIPTED_WAVE_TEXT[id], tone: "neutral" };
+  state.pendingRefugees = {
+    count: SCRIPTED_WAVE_REFUGEES,
+    text: SCRIPTED_WAVE_TEXT[id],
+    year: state.year,
+  };
+  return { year: state.year, text: SCRIPTED_WAVE_PENDING[id], tone: "neutral" };
 }
 
 function isPursued(state: GameState): boolean {
