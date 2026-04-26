@@ -70,10 +70,10 @@ export function makeNewcomerPop(): Pop {
 }
 
 export function rollScriptedWaves(): ScriptedWave[] {
-  const ids: ScriptedWaveId[] = ["wave1", "wave2", "wave3"];
+  const ids: ScriptedWaveId[] = ["wave1", "wave2", "wave3", "wave4"];
   const waves: ScriptedWave[] = [];
   let previous = 0;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     const target = SCRIPTED_WAVE_TARGETS[i];
     const lo = Math.max(target - SCRIPTED_WAVE_JITTER, previous + SCRIPTED_WAVE_MIN_GAP);
     const hi = target + SCRIPTED_WAVE_JITTER;
@@ -126,6 +126,9 @@ export function newGame(departure: DepartureChoices): GameState {
     scriptedWaves: rollScriptedWaves(),
     merchantVisit: null,
     pendingRefugees: null,
+    elderTransitions: 0,
+    elderPolicy: null,
+    pendingElderDecision: false,
     buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, long_house: false, shrine_of_anata: false, chicken_coop: false },
     houses: 0,
     wool: 0,

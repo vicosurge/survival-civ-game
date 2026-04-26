@@ -743,6 +743,101 @@ html, body {
 }
 #refugees-panel .refugees-decline:hover { background: rgba(92, 67, 32, 0.15); }
 
+#elder-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+  padding: 1.5rem;
+}
+#elder-overlay.hidden { display: none; }
+
+#elder-panel {
+  max-width: 560px;
+  width: 100%;
+  background:
+    radial-gradient(ellipse at 20% 10%, rgba(120, 80, 40, 0.12), transparent 60%),
+    linear-gradient(180deg, #e9d7a9 0%, #d9c28a 100%);
+  color: #3a2814;
+  border: 2px solid #5c4320;
+  box-shadow:
+    0 0 0 4px #a88556 inset,
+    0 0 24px rgba(0, 0, 0, 0.6);
+  padding: 1.75rem;
+  font-family: "Georgia", "Times New Roman", serif;
+}
+
+#elder-panel h2 {
+  margin: 0 0 0.75rem 0;
+  text-align: center;
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+  color: #6b3f0f;
+  text-transform: uppercase;
+  font-weight: normal;
+}
+
+#elder-panel > p {
+  font-style: italic;
+  margin: 0 0 1.25rem 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.elder-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.elder-choice {
+  padding: 0.75rem;
+  background: rgba(92, 67, 32, 0.07);
+  border: 1px solid rgba(92, 67, 32, 0.3);
+}
+
+.elder-choice h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+  color: #6b3f0f;
+  text-transform: uppercase;
+  font-weight: normal;
+}
+
+.elder-choice p {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.elder-btn-work, .elder-btn-respect {
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  text-transform: uppercase;
+  border: 2px solid #3a2814;
+}
+
+.elder-btn-work {
+  background: #5a3820;
+  color: #f0e2b8;
+}
+.elder-btn-work:hover { background: #7a4e2e; }
+
+.elder-btn-respect {
+  background: #6b3f0f;
+  color: #f0e2b8;
+}
+.elder-btn-respect:hover { background: #8a5415; }
+
 #departure-overlay {
   position: fixed;
   inset: 0;

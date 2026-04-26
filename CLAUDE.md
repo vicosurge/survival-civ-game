@@ -44,13 +44,13 @@ Version history lives in git log + README. This file describes current state onl
 
 A pop is a `{ age, lifespan, founder? }` record, not a counter. See `Pop` in `types.ts`.
 
-**Three age phases** (v0.5 — the birth/death wall fix validated via `sim/birth_death_curve.py`):
+**Three age phases** (v0.7 — elder age and lifespan raised to fix demographic deadlock):
 
 - **Child** — `age < ADULT_AGE = 14`. Eats `FOOD_PER_CHILD = 1`. Doesn't work, doesn't reproduce.
-- **Adult (fertile)** — `ADULT_AGE <= age < ELDER_AGE = 25`. Eats `FOOD_PER_ADULT = 2`. Works, contributes to growth.
-- **Elder** — `age >= ELDER_AGE`. Eats `FOOD_PER_ADULT = 2`. **Doesn't work, doesn't reproduce.** Still a morale beat when they pass.
+- **Adult (fertile)** — `ADULT_AGE <= age < ELDER_AGE = 35`. Eats `FOOD_PER_ADULT = 2`. Works, contributes to growth.
+- **Elder** — `age >= ELDER_AGE`. Eats `FOOD_PER_ADULT = 2`. Doesn't reproduce. Works or rests depending on `state.elderPolicy` (see Elder Decision below).
 
-Why these numbers: steady-state population under the +1-baby-per-year rule ≈ mean lifespan, so with `LIFESPAN_RANGE = [25, 40]` (mean 32.5) the Long House 25-pop gate becomes a natural mid-game milestone instead of an unreachable wall. Sim in `sim/birth_death_curve.py` confirms 500/500 trials reach 25 by ~year 24. Don't shorten lifespan back to [10,15] territory — it re-pins steady state at 12.5 and breaks the gate.
+Why these numbers: fertility window is 14–35 (21 years), mean lifespan ≈ 45. Steady-state population ≈ 45, which puts the Long House gate (25 pops) solidly in mid-game. `LIFESPAN_RANGE = [35, 55]`. Don't shorten lifespan or elder age — the old [25,40] + ELDER_AGE=25 combination created a 6-year non-working elder tail that triggered demographic collapse by year ~60.
 
 - `STARTER_AGE_RANGE = [15, 22]` — five starter adults staggered as young workers. Lifespan floored at `age + STARTER_LIFESPAN_FLOOR_BONUS = 10` so the founding cohort can't all die before babies mature. **Don't remove this floor** when tuning lifespan.
 - `STARTER_CHILD_AGE_RANGE = [0, 4]` — two children. Still under `ADULT_AGE = 14`, so there's a long child phase ahead of them.
@@ -65,6 +65,10 @@ Why these numbers: steady-state population under the +1-baby-per-year rule ≈ m
 **Bandits kill adults**, not children (defenders fall). `removePops(state, 1, "adult")` in `events.ts`. Currently filters on `age >= ADULT_AGE` so elders are eligible too; if that reads wrong at playtest, restrict to fertile adults.
 
 **Growth gate** — a baby is born at end-of-year if *all* of: `pop > 0`, `pop < popCapacity(state)`, `food >= pop × 3`, `morale >= 50`. `popCapacity = INITIAL_HUT_CAPACITY (20) + houses × HOUSE_CAPACITY (6)`. The cap is hard; newcomers/refugees bypass it (you can't turn refugees away) but births don't.
+
+**Elder decision (`state.pendingElderDecision`):** Fires the first time `state.elderTransitions >= ELDER_DECISION_TRIGGER = 5` (5 pops have crossed into elder). Blocks end-year like merchant/refugee modals. Two choices:
+- **working**: elders contribute `ELDER_WORK_FOOD_YIELD = 0.5` food/elder/year (applied step 1); `MORALE_ELDER_WORK_CHOICE = -3` one-time hit.
+- **respected**: elders don't labour; `MORALE_ELDER_RESPECTED_CHOICE = +5` one-time. Modal in `#elder-overlay`. Resolve via `acceptElderWork` / `respectElders` in turn.ts.
 
 **#21 fix in `projectedYields`:** food consumption uses *next turn's* ages because the pipeline ages everyone in step 0 before eating in step 5. A child aged 3 today eats 2 this turn (age 4 after step 0). Projection sums `futureAge = age + 1`, skipping pops who die of old age that turn. Don't revert to using current ages — the topbar lies otherwise.
 
@@ -175,7 +179,7 @@ One-time purchases in `types.ts:BUILDINGS`. `state.buildings: Record<BuildingId,
 
 **Houses are separate** from `BUILDINGS` because they're repeatable. `state.houses: number`, costs 8 wood + 3 stone each, gives +`HOUSE_CAPACITY = 6` pop capacity and +`HOUSE_FOOD_YIELD = 2` food/year from garden plots. Gated on Long House. API is `canBuildHouse`/`buildHouse`/`houseBlockerReason` in turn.ts — deliberately outside the one-time `canBuild`/`build` path. Future hook: taxation (Ostriv-style), not implemented yet.
 
-**Pop cap** (`popCapacity` in state.ts): `INITIAL_HUT_CAPACITY (20) + houses × 6`. Blocks **births only** — accepted newcomers/refugees can push pop past the cap (you can't turn people away mid-arrival). The design arc: starter huts hold the band through year ~15–20; scripted waves and random newcomers push pop over 20 to reach the 25-pop Long House gate; Long House unlocks houses; each house lifts the cap by 6 and adds 2 food/year to offset the tighter child+elder consumption load under extended lifespan.
+**Pop cap** (`popCapacity` in state.ts): `INITIAL_HUT_CAPACITY (25) + houses × 6`. Blocks **births only** — accepted newcomers/refugees can push pop past the cap (you can't turn people away mid-arrival). The design arc: starter huts now hold 25, giving births room to reach the 25-pop Long House gate naturally; Long House unlocks houses; each house lifts the cap by 6. Cap raised from 20 to 25 to break the deadlock where births were blocked exactly at the Long House threshold.
 
 **Blocker mechanism:** events carry optional `blockedBy: BuildingId` + `blockedText: string`. `rollEvent` picks normally, then if blocked, returns `blockedText` as a "good" tone log and skips `apply`. The blocked roll still consumes the year's event slot — the "averted" chronicle line *is* the event. Narratively satisfying and keeps the turn pipeline unchanged.
 
@@ -252,7 +256,7 @@ The `merchants` event creates a `state.merchantVisit: MerchantVisit | null`. `ma
 
 ### Scripted Exarum-survivor waves
 
-Three one-shot narrative events scheduled at `newGame()`. Target years `SCRIPTED_WAVE_TARGETS = [5, 10, 20]` with ±`SCRIPTED_WAVE_JITTER = 3`, ordering enforced by `SCRIPTED_WAVE_MIN_GAP = 3`. Fire-years live on `state.scriptedWaves: ScriptedWave[]`.
+Four one-shot narrative events scheduled at `newGame()`. Target years `SCRIPTED_WAVE_TARGETS = [5, 10, 20, 35]` with ±`SCRIPTED_WAVE_JITTER = 3`, ordering enforced by `SCRIPTED_WAVE_MIN_GAP = 3`. Fire-years live on `state.scriptedWaves: ScriptedWave[]`.
 
 At turn pipeline step 4, if a wave's year matches and `fired === false`, it **replaces** the random event roll, spawns `SCRIPTED_WAVE_REFUGEES = 2` adults, and writes a lore-length log entry. Narrative in `events.ts:SCRIPTED_WAVE_TEXT` — don't drift from the canonical names in `memory/project_cambrera_lore.md` (Exarum, Klon, Destum, Cuarecam, Duras/Vizqe/Drazna/Harab/Bludris, Bura, Captain Amezcua, draconians).
 
@@ -260,6 +264,7 @@ At turn pipeline step 4, if a wave's year matches and `fired === false`, it **re
 - Refugee count (2 adults) matches the random `newcomers` event so the arc doesn't secretly snowball the economy.
 - **Both waves and the random newcomers event are now optional.** They set `state.pendingRefugees` instead of pushing pops. A modal (same pattern as trade modal, opened from `redraw()`) prompts accept (+4 morale) or decline (−3 morale). Accepted refugees arrive next year, not the turn they appear. Boat crew and boat-found refugees are still automatic — they're your own people returning.
 - `fired` flag (not a cleared array) is required because save/load must persist which played.
+- Wave 4 (~year 35): Bura exiles — people cast out before Amezcua's coming decline, bringing news that Bura still stands but the Captain grows senile. Fear of succession.
 - Extension: new scripted event = new `ScriptedWaveId`, append to targets, write text and brief pending text. No turn.ts or state.ts churn.
 
 ### Departure wizard

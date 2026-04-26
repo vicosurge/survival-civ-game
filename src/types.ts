@@ -1,4 +1,4 @@
-export const VERSION = "v0.6";
+export const VERSION = "v0.7";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
@@ -76,7 +76,7 @@ export interface Boat {
   crew: Pop[];                // 2 adults if on voyage; empty when docked
 }
 
-export type ScriptedWaveId = "wave1" | "wave2" | "wave3";
+export type ScriptedWaveId = "wave1" | "wave2" | "wave3" | "wave4";
 
 // A one-shot narrative event scheduled at newGame() and fired on the year
 // rolled. Adds refugees + a lore log entry. Replaces the random-event roll
@@ -117,7 +117,7 @@ export const ANATA_FOUNDER_EXTRA = 2;      // founder extra while shrine exists 
 // Houses — repeatable post-Long-House building. Pop is hard-capped until a new
 // house is built. Each house also yields a small steady food income from a
 // private garden plot (Ostriv-inspired; future taxation hook lives here).
-export const INITIAL_HUT_CAPACITY = 20;   // starter huts accommodate this many before crowding bites
+export const INITIAL_HUT_CAPACITY = 25;   // starter huts accommodate this many before crowding bites
 export const HOUSE_CAPACITY = 6;          // each new house adds this many to pop capacity
 export const HOUSE_FOOD_YIELD = 2;        // food/year from each house's garden plot
 export const HOUSE_COST = { wood: 8, stone: 3 };
@@ -327,6 +327,9 @@ export interface GameState {
   scriptedWaves: ScriptedWave[];
   merchantVisit: MerchantVisit | null;  // pending merchant visit; blocks end-year
   pendingRefugees: { count: number; text: string; year: number } | null;
+  elderTransitions: number;     // lifetime count of adult→elder crossings
+  elderPolicy: "working" | "respected" | null;  // null = decision not yet made
+  pendingElderDecision: boolean;  // true while waiting for player to decide
   buildings: Record<BuildingId, boolean>;
   houses: number;
   sheepSlaughter: number;             // standing order: sheep to cull per year across all shepherd tiles
@@ -346,13 +349,13 @@ export const MAP_W = 20;
 export const MAP_H = 15;
 export const TILE_SIZE = 32;
 
-// Three-phase aging. Tuned so lifespan is realistic-ish (30-year average) while
-// preserving old-age deaths as a regular morale beat. Child phase is long —
+// Three-phase aging. Mean lifespan ~45 years. Child phase is long —
 // babies take 14 years of food-without-work before they pay back, so growth
-// stays an investment.
+// stays an investment. Fertility window is 14–35 (21 years) — long enough that
+// the settlement can sustain itself without relying solely on immigration.
 export const ADULT_AGE = 14;              // child < adult
-export const ELDER_AGE = 25;              // adult < elder; elders eat but don't work or reproduce
-export const LIFESPAN_RANGE: [number, number] = [25, 40];
+export const ELDER_AGE = 35;              // adult < elder; elders eat but don't work or reproduce
+export const LIFESPAN_RANGE: [number, number] = [35, 55];
 // Starter adults are young workers — plenty of runway ahead of them.
 export const STARTER_AGE_RANGE: [number, number] = [15, 22];
 // Starter children: under adult_age at game start.
@@ -435,8 +438,16 @@ export const FISH_RICH_CHANCE = 0.2;
 
 // Scripted Exarum-survivor waves — target years and jitter (±). Rolled at
 // newGame() so each playthrough varies while keeping the narrative arc intact.
-export const SCRIPTED_WAVE_TARGETS: [number, number, number] = [5, 10, 20];
+export const SCRIPTED_WAVE_TARGETS: [number, number, number, number] = [5, 10, 20, 35];
 export const SCRIPTED_WAVE_JITTER = 3;
+
+// Elder labour policy decision — fires when the 5th adult transitions to elder.
+// "working": elders keep contributing light tasks (+0.5 food each/yr, -3 morale at choice).
+// "respected": elders govern and teach (+5 morale at choice, no labour).
+export const ELDER_DECISION_TRIGGER = 5;
+export const ELDER_WORK_FOOD_YIELD = 0.5;
+export const MORALE_ELDER_WORK_CHOICE = -3;
+export const MORALE_ELDER_RESPECTED_CHOICE = 5;
 // Minimum years between consecutive waves (after jitter).
 export const SCRIPTED_WAVE_MIN_GAP = 3;
 export const SCRIPTED_WAVE_REFUGEES = 2;
@@ -562,4 +573,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v21";
+export const SAVE_KEY = "isle-of-cambrera-save-v22";

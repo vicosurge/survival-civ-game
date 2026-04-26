@@ -1,9 +1,14 @@
 import { fireScriptedWave, rollEvent } from "./events";
 import { currentWorkers, exploreFrontier, findWorkerToRemove, hasUndiscoveredFrontier, isInReach } from "./map";
 import { ANATA_BUILD_LINE, ANATA_UNLOCK_LINE, FIRST_HOUSE_LINE, QUARRY_EXHAUSTED_LINE, additionalHouseLine } from "./narratives";
-import { adultCount, applyMorale, childCount, fertileCount, idleCount, makeBabyPop, makeNewcomerPop, popCapacity, totalPop } from "./state";
+import { adultCount, applyMorale, childCount, elderCount, fertileCount, idleCount, makeBabyPop, makeNewcomerPop, popCapacity, totalPop } from "./state";
 import {
   ADULT_AGE,
+  ELDER_AGE,
+  ELDER_DECISION_TRIGGER,
+  ELDER_WORK_FOOD_YIELD,
+  MORALE_ELDER_WORK_CHOICE,
+  MORALE_ELDER_RESPECTED_CHOICE,
   ANATA_DEATH_TRIGGER,
   ANATA_FOUNDER_EXTRA,
   ANATA_OLD_AGE_MORALE,
@@ -82,6 +87,8 @@ export function endYear(state: GameState): void {
 
   // 0. Age everyone, handle natural deaths, count children-coming-of-age.
   const childrenBefore = childCount(state);
+  // Count pops crossing into elder phase this year (age was ELDER_AGE-1, now ELDER_AGE).
+  const newElderCrossings = state.pops.filter((p) => p.age === ELDER_AGE - 1).length;
   for (const pop of state.pops) pop.age += 1;
   state.pops = state.pops.filter((p) => {
     if (p.age >= p.lifespan) {
@@ -92,9 +99,17 @@ export function endYear(state: GameState): void {
     return true;
   });
   const childrenAfter = childCount(state);
-  // Lifespans are ≥ 25 and children are <14, so no child dies of old age —
+  // Lifespans are ≥ ELDER_AGE and children are <ADULT_AGE, so no child dies of old age —
   // any drop in child count is purely coming-of-age.
   tally.comingOfAge = childrenBefore - childrenAfter;
+
+  // Elder decision gate — fires the first time 5 adults have crossed into elder.
+  if (newElderCrossings > 0 && state.elderPolicy === null) {
+    state.elderTransitions += newElderCrossings;
+    if (state.elderTransitions >= ELDER_DECISION_TRIGGER && !state.pendingElderDecision) {
+      state.pendingElderDecision = true;
+    }
+  }
 
   if (tally.oldAgeDeaths > 0) {
     const shrined = state.buildings.shrine_of_anata;
@@ -209,6 +224,12 @@ export function endYear(state: GameState): void {
   }
   const houseFood = state.houses * HOUSE_FOOD_YIELD;
   foodGain += houseFood;
+
+  // Elder labour policy — working elders contribute light tasks (garden, repair).
+  if (state.elderPolicy === "working") {
+    const elders = elderCount(state);
+    foodGain += Math.floor(elders * ELDER_WORK_FOOD_YIELD);
+  }
 
   // Sheep slaughter standing order — runs across all shepherd tiles.
   let slaughtered = 0;
@@ -866,5 +887,27 @@ export function declineRefugees(state: GameState): LogEntry {
     year,
     text: `The ${count === 1 ? "wanderer is" : "wanderers are"} turned away. It weighs on the settlement. (${MORALE_REFUGEE_REJECT} morale)`,
     tone: "bad",
+  };
+}
+
+export function acceptElderWork(state: GameState): LogEntry {
+  state.elderPolicy = "working";
+  state.pendingElderDecision = false;
+  applyMorale(state, MORALE_ELDER_WORK_CHOICE);
+  return {
+    year: state.year,
+    text: `The elders take up their tools once more — bent-backed but willing. Their hands remember the work. (${MORALE_ELDER_WORK_CHOICE} morale; elders contribute +${ELDER_WORK_FOOD_YIELD} food/year each)`,
+    tone: "neutral",
+  };
+}
+
+export function respectElders(state: GameState): LogEntry {
+  state.elderPolicy = "respected";
+  state.pendingElderDecision = false;
+  applyMorale(state, MORALE_ELDER_RESPECTED_CHOICE);
+  return {
+    year: state.year,
+    text: `The elders set down their burdens. They will teach, counsel, and keep the oral record. Their wisdom is the settlement's inheritance. (+${MORALE_ELDER_RESPECTED_CHOICE} morale)`,
+    tone: "good",
   };
 }

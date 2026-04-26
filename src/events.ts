@@ -131,11 +131,17 @@ const EVENTS: EventDef[] = [
         : -2;
       applyMorale(s, moraleLost);
       const founderNote = founderLost > 0 ? " One of the founders is among the dead." : "";
+      const RAID_INTRO = [
+        "Bandits from the highlands raid the settlement.",
+        "Hardened survivors from the island's interior strike at dusk.",
+        "Mountain-dwellers, lean and desperate, descend on the settlement.",
+      ];
+      const intro = RAID_INTRO[Math.floor(Math.random() * RAID_INTRO.length)];
       return {
         year: s.year,
         text: lost.length > 0
-          ? `Bandits from the highlands raid the settlement. A defender falls.${founderNote} (-${goldLost} gold, -${lost.length} adult)`
-          : `Bandits circle but find little. (-${goldLost} gold)`,
+          ? `${intro} A defender falls.${founderNote} (-${goldLost} gold, -${lost.length} adult)`
+          : `${intro} They circle but find little. (-${goldLost} gold)`,
         tone: "bad",
       };
     },
@@ -232,12 +238,22 @@ const SCRIPTED_WAVE_TEXT: Record<ScriptedWaveId, string> = {
     "imperial colours. How long the city stands, none can say. Worse still: " +
     "some among the newcomers whisper that the draconians may know of " +
     "Cambrera now — that we may be next.",
+  wave4:
+    "A small boat scrapes onto the shore, crewed by gaunt men and women who do " +
+    "not look like refugees. They bear Buran symbols but hold themselves like " +
+    "people cast out. 'We were exiled,' their leader says without preamble. " +
+    "'Bura still stands — the walls, the granaries, the old ways. But the " +
+    "Captain grows confused. He argues with ghosts, signs orders for men twenty " +
+    "years dead. The citizens fear the day he passes, and what comes after.' " +
+    "She looks at the settlement around her, measuring it. 'We chose not to be " +
+    "there for that reckoning. So here we are.'",
 };
 
 const SCRIPTED_WAVE_PENDING: Record<ScriptedWaveId, string> = {
   wave1: "Survivors from across the sea arrive at your shores — they await your word at the gate.",
   wave2: "More survivors of the Exarum war reach Cambrera — they wait for your decision.",
   wave3: "A gaunt band stumbles ashore with the dirge of Exarum on their lips — they await your word.",
+  wave4: "Exiles from Bura have landed on your shore — bearing hard news of the city. They are asking to join you.",
 };
 
 export function fireScriptedWave(state: GameState, id: ScriptedWaveId): LogEntry {

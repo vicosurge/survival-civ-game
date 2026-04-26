@@ -2,6 +2,7 @@ import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReac
 import { JOB_TOOLTIPS } from "./narratives";
 import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, sheepHerdTotal, totalPop } from "./state";
 import {
+  acceptElderWork,
   acceptRefugees,
   assignWorker,
   build,
@@ -18,6 +19,7 @@ import {
   executeTradeBasket,
   fishingLossReduction,
   houseBlockerReason,
+  respectElders,
   unassignWorker,
 } from "./turn";
 import {
@@ -47,6 +49,9 @@ import {
   MAP_H,
   MAP_W,
   MerchantVisit,
+  ELDER_WORK_FOOD_YIELD,
+  MORALE_ELDER_WORK_CHOICE,
+  MORALE_ELDER_RESPECTED_CHOICE,
   MORALE_REFUGEE_ACCEPT,
   MORALE_REFUGEE_REJECT,
   ORIGINS,
@@ -360,14 +365,16 @@ export function renderUI(state: GameState, onAllocChange: () => void): void {
   renderTilePopup(state);
   renderLog(state);
   const endBtn = document.getElementById("end-turn-btn") as HTMLButtonElement;
-  endBtn.disabled = state.gameOver || state.merchantVisit !== null || !!state.pendingRefugees;
+  endBtn.disabled = state.gameOver || state.merchantVisit !== null || !!state.pendingRefugees || state.pendingElderDecision;
   endBtn.textContent = state.gameOver
     ? "— Settlement Failed —"
     : state.merchantVisit !== null
       ? "Merchants waiting…"
       : state.pendingRefugees
         ? "Refugees at the gate…"
-        : "End Year";
+        : state.pendingElderDecision
+          ? "Council awaiting…"
+          : "End Year";
 }
 
 export function maybeShowTradeModal(state: GameState, onResolve: () => void): void {
@@ -540,6 +547,60 @@ export function maybeShowRefugeesModal(state: GameState, onResolve: () => void):
   });
   overlay.querySelector<HTMLButtonElement>(".refugees-decline")!.addEventListener("click", () => {
     state.log.unshift(declineRefugees(state));
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    onResolve();
+  });
+}
+
+export function maybeShowElderDecisionModal(state: GameState, onResolve: () => void): void {
+  const overlay = document.getElementById("elder-overlay")!;
+  if (!state.pendingElderDecision || state.gameOver) {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    return;
+  }
+
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+
+  overlay.innerHTML = `
+    <div id="elder-panel" role="dialog" aria-label="The Council of Elders">
+      <h2>The Elder Question</h2>
+      <p class="refugees-flavor">
+        Your settlement has seen ${state.elderTransitions} men and women pass into their elder years.
+        The community gathers to decide what is owed to those who founded and built this place —
+        and what they can still give.
+      </p>
+      <div class="elder-choices">
+        <div class="elder-choice">
+          <h3>Elders Work On</h3>
+          <p>They tend gardens, mend tools, and keep the fires — lighter tasks, but real ones.
+             Each elder contributes <strong>+${ELDER_WORK_FOOD_YIELD} food/year</strong>.
+             Some will resent the burden.</p>
+          <button class="elder-btn-work">Put them to work (${MORALE_ELDER_WORK_CHOICE} morale)</button>
+        </div>
+        <div class="elder-choice">
+          <h3>Honour the Elders</h3>
+          <p>They govern, counsel, and pass down what they know. No labour, but their presence
+             steadies the settlement. The community is proud of this choice.</p>
+          <button class="elder-btn-respect">Honour their rest (+${MORALE_ELDER_RESPECTED_CHOICE} morale)</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector<HTMLButtonElement>(".elder-btn-work")!.addEventListener("click", () => {
+    state.log.unshift(acceptElderWork(state));
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    onResolve();
+  });
+  overlay.querySelector<HTMLButtonElement>(".elder-btn-respect")!.addEventListener("click", () => {
+    state.log.unshift(respectElders(state));
     overlay.classList.add("hidden");
     overlay.setAttribute("aria-hidden", "true");
     overlay.innerHTML = "";
