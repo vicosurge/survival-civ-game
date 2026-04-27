@@ -33,7 +33,7 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage saves, single slot. Current key: `isle-of-cambrera-save-v21`. **Bump on any breaking state-shape change.** Old saves must fail loud (parse/validation error → `newGame()`), not load silently with `NaN`/`undefined` fields.
+- localStorage saves, single slot. Current key: `isle-of-cambrera-save-v23`. **Bump on any breaking state-shape change.** Old saves must fail loud (parse/validation error → `newGame()`), not load silently with `NaN`/`undefined` fields.
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
 Version history lives in git log + README. This file describes current state only.
@@ -69,6 +69,14 @@ Why these numbers: fertility window is 14–35 (21 years), mean lifespan ≈ 45.
 **Elder decision (`state.pendingElderDecision`):** Fires the first time `state.elderTransitions >= ELDER_DECISION_TRIGGER = 5` (5 pops have crossed into elder). Blocks end-year like merchant/refugee modals. Two choices:
 - **working**: elders contribute `ELDER_WORK_FOOD_YIELD = 0.5` food/elder/year (applied step 1); `MORALE_ELDER_WORK_CHOICE = -3` one-time hit.
 - **respected**: elders don't labour; `MORALE_ELDER_RESPECTED_CHOICE = +5` one-time. Modal in `#elder-overlay`. Resolve via `acceptElderWork` / `respectElders` in turn.ts.
+
+After the first decision, the elder policy is **revisitable via the Governance panel** (Long House → Open). Each flip re-applies the same morale cost — reversibility doesn't make the choice weightless. See *Governance* below.
+
+**Child decision (`state.pendingChildDecision`):** Fires the first time `state.buildings.long_house === true` AND `childCount(state) >= CHILD_DECISION_TRIGGER = 3` AND `state.childPolicy === null`. Modal in `#child-overlay`. Gating on Long House guarantees the Governance panel exists when this lands and prevents collision with the elder decision (which fires earlier). Two choices:
+- **working**: children contribute `CHILD_WORK_FOOD_YIELD = 0.5` food/child/year + `CHILD_WORK_WOOD_YIELD = 0.3` wood/child/year (both floored at apply time — 3 working children = +1 food, +0 wood; 5 children = +2 food, +1 wood); `MORALE_CHILD_WORK_CHOICE = -4`.
+- **free**: children don't labour; `MORALE_CHILD_FREE_CHOICE = +3`. Resolve via `setChildrenWorking` / `setChildrenFree` in turn.ts.
+
+Also revisitable via Governance after first decision.
 
 **#21 fix in `projectedYields`:** food consumption uses *next turn's* ages because the pipeline ages everyone in step 0 before eating in step 5. A child aged 3 today eats 2 this turn (age 4 after step 0). Projection sums `futureAge = age + 1`, skipping pops who die of old age that turn. Don't revert to using current ages — the topbar lies otherwise.
 
@@ -200,6 +208,48 @@ One-time purchases in `types.ts:BUILDINGS`. `state.buildings: Record<BuildingId,
 
 **Extension path:** new building = add `BuildingId`, append to BUILDINGS, optionally tag an event with `blockedBy` + `blockedText`. No turn.ts or UI churn. Blocking is one possible effect — don't couple the system to it. Chronicle lines (unlock, completion) live in `src/narratives.ts` — keep prose out of turn.ts so non-dev editors can tune voice without touching game logic.
 
+### Hidden buildings + unlock chronicle
+
+`isBuildingHidden(state, id)` in turn.ts hides any building whose blocker reason starts with `"Requires"` or `"Needs"` (i.e., a *gate* blocker — pop count, prereq, death-trigger). Resource-only blockers (`"Short: ..."`) stay visible — players need to know they're saving toward something.
+
+**Long House is the one exception** — it stays visible at all times. It's the major civic milestone players plan toward; hiding it loses the goal.
+
+**Unlock chronicle:** `state.unlockedBuildings: Record<BuildingId, boolean>` tracks which gates have already announced themselves. `checkBuildingUnlocks` runs at the end of `endYear`, after growth — for each gated building not yet built, if the gate is satisfied for the first time, set the flag and emit `BUILDING_UNLOCK_TEXT[id]` from `narratives.ts`. One-shot per building per save.
+
+The Shrine of Anata uses the legacy `ANATA_UNLOCK_LINE` path (fired from step 0 when `oldAgeDeathsTotal` crosses the threshold). Don't add a duplicate entry to `BUILDING_UNLOCK_TEXT` — `checkBuildingUnlocks` skips it explicitly.
+
+Initial state: `unlockedBuildings` is `true` for all non-gated buildings (granary, palisade, well, hunting_lodge, chicken_coop) so the unlock check never fires for them.
+
+### Town Center upgrades
+
+Lightweight repeatable infrastructure layer that lives outside the one-time `BUILDINGS` table. Two upgrades available from turn 1; a third tier is reserved for the Long House to unlock later (Market Square / Civic Hall — not yet implemented, intentionally a stub).
+
+`state.townUpgrades: Record<TownUpgradeId, boolean>`. Defined in `TOWN_UPGRADES` (types.ts) with cost + integer per-year yield.
+
+| Upgrade | Cost | Yield |
+|---|---|---|
+| Communal Garden | 5 food, 5 wood | +1 food/yr |
+| Workshop Yard | 8 wood, 5 stone | +1 wood/yr |
+
+**Why integer yields, not fractional:** "Why doesn't my stone count go up?" was the worry with `+0.3 wood`. Town upgrades are deliberately tiny but legible — players see the +1 each year. Fractional yields stay the territory of per-pop modifiers (granary, lodge, working children/elders) where the count averages out.
+
+API: `townUpgradeBlockerReason` / `canBuildTownUpgrade` / `buildTownUpgrade` in turn.ts. Yields applied at turn step 1 alongside building-derived yields.
+
+**Design intent:** addresses the "100% farming, 0 wood/stone" dead end Vicente identified. With Workshop Yard standing, even a settlement at full farming gets a slow trickle of wood — enough that the build economy doesn't flatline. Doesn't replace woodcutters/quarrymen because the trickle is small enough that real production still pays back.
+
+### Governance (civic decisions)
+
+Surfaces from a "Governance" row in the build column once `state.buildings.long_house === true`. Opens `#governance-overlay`, lists currently-active laws (elder + child policy) with toggle buttons.
+
+**Re-application cost:** every flip applies the same morale delta as the first decision. Flipping elders from "respected" to "working" costs −3 morale every time, not just the first. Frostpunk's pattern — laws can change, but each change carries real friction. **Don't add a "free first flip" or cooldown** without a fresh design conversation; the friction is the design.
+
+**Where decisions live:**
+- First-time elder decision: triggered in turn.ts step 0 (5+ elders crossed), modal `#elder-overlay`, handlers `acceptElderWork` / `respectElders`.
+- First-time child decision: triggered at end of turn (Long House built + 3+ children), modal `#child-overlay`, handlers `setChildrenWorking` / `setChildrenFree`.
+- Revisit (both): Governance modal `#governance-overlay`, handlers `toggleElderPolicy` / `toggleChildPolicy`.
+
+**Future civic decisions** (taxation, military service, religion observance) belong here, not in the random events table. Add a new field on GameState (`xxxPolicy: "..." | null`), a triggering condition (probably gated on Long House or a future civic building), an entry in the governance modal, and toggle handlers in turn.ts. Don't wire them into events.ts.
+
 ### Roads
 
 First tile-targeted construction. Click tile → "Build Road" button in tile info panel. Cost: 2 wood + 5 stone. Instant, permanent.
@@ -277,8 +327,10 @@ Six-step pre-game wizard. `state.departure: DepartureChoices` persists the picks
 | 2 Who came with you? | craftsman (+6w +4s) / wisewoman (+2f +5 morale) / nobody (+5f) | — |
 | 3 Departure timing | prepared (+5w +3s) / hasty | Sets `pursuedRisk` if prepared |
 | 4 The alarm bells | grab (+7f) / cast off | Sets `pursuedRisk` if grab |
-| 5 The ship | keep / salvage (+12w, scrapped) / burn (+4w, scrapped, clears pursuit) | Sets `Boat.status = "scrapped"` |
-| 6 Where do you land? | western_shore (6,6) / southern_cove (6,10) / northern_strand (7,3) | `buildIsland(landingPos)` |
+| 5 Where do you land? | western_shore (6,6) / southern_cove (6,10) / northern_strand (7,3) | `buildIsland(landingPos)` |
+| 6 The ship | keep / salvage (+12w, scrapped) / burn (+4w, scrapped, clears pursuit) | Sets `Boat.status = "scrapped"` |
+
+**Step order note:** landing comes before ship (swapped from earlier versions). Narrative beat improves — you make landfall first, then decide the fate of the vessel that brought you.
 
 **Bandit pursuit:** `isPursued(state)` true if `(timing===prepared OR alarm===grab) AND shipFate!==burn`. Doubles bandit weight years 1–5. Burning the ship clears the trail narrative-mechanically.
 

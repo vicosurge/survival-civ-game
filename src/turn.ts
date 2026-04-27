@@ -1,6 +1,20 @@
 import { fireScriptedWave, rollEvent } from "./events";
 import { currentWorkers, exploreFrontier, findWorkerToRemove, hasUndiscoveredFrontier, isInReach } from "./map";
-import { ANATA_BUILD_LINE, ANATA_UNLOCK_LINE, FIRST_HOUSE_LINE, QUARRY_EXHAUSTED_LINE, additionalHouseLine } from "./narratives";
+import {
+  ANATA_BUILD_LINE,
+  ANATA_UNLOCK_LINE,
+  BUILDING_UNLOCK_TEXT,
+  CHILD_FLIP_TO_FREE_LINE,
+  CHILD_FLIP_TO_WORK_LINE,
+  CHILD_FREE_LINE,
+  CHILD_WORK_LINE,
+  ELDER_FLIP_TO_RESPECT_LINE,
+  ELDER_FLIP_TO_WORK_LINE,
+  FIRST_HOUSE_LINE,
+  QUARRY_EXHAUSTED_LINE,
+  TOWN_UPGRADE_BUILD_LINE,
+  additionalHouseLine,
+} from "./narratives";
 import { adultCount, applyMorale, childCount, elderCount, fertileCount, idleCount, makeBabyPop, makeNewcomerPop, popCapacity, totalPop } from "./state";
 import {
   ADULT_AGE,
@@ -23,6 +37,9 @@ import {
   CHICKEN_GROWTH_RATE,
   CHICKEN_SLAUGHTER_FOOD,
   CHICKEN_STARTING_FLOCK,
+  CHILD_DECISION_TRIGGER,
+  CHILD_WORK_FOOD_YIELD,
+  CHILD_WORK_WOOD_YIELD,
   CULTIVATION_YEARS,
   FALLOW_REVERT_YEARS,
   FISHER_YIELD_BASE,
@@ -46,6 +63,8 @@ import {
   MERCHANT_CARGO_RANGE,
   MERCHANT_STOCK_UNITS,
   MerchantVisit,
+  MORALE_CHILD_FREE_CHOICE,
+  MORALE_CHILD_WORK_CHOICE,
   MORALE_FOUNDER_EXTRA,
   MORALE_GROWTH_GATE,
   MORALE_OLD_AGE_DEATH,
@@ -60,6 +79,9 @@ import {
   SHEEP_STARTING_HERD,
   SHEPHERD_FOOD_YIELD,
   SHEPHERD_WOOL_YIELD,
+  TOWN_UPGRADES,
+  TownUpgradeDef,
+  TownUpgradeId,
   TradeBasket,
   TradeResource,
   basketGoldDelta,
@@ -229,6 +251,24 @@ export function endYear(state: GameState): void {
   if (state.elderPolicy === "working") {
     const elders = elderCount(state);
     foodGain += Math.floor(elders * ELDER_WORK_FOOD_YIELD);
+  }
+
+  // Child labour policy — working children gather kindling, weed gardens, sort
+  // small things. Floored, deliberately stingy (see types.ts comment).
+  if (state.childPolicy === "working") {
+    const kids = childCount(state);
+    foodGain += Math.floor(kids * CHILD_WORK_FOOD_YIELD);
+    woodGain += Math.floor(kids * CHILD_WORK_WOOD_YIELD);
+  }
+
+  // Town-centre upgrades — small passive yields, no worker required. Iterate
+  // the table so adding a new upgrade auto-extends the harvest pipeline.
+  for (const id of Object.keys(TOWN_UPGRADES) as TownUpgradeId[]) {
+    if (!state.townUpgrades[id]) continue;
+    const y = TOWN_UPGRADES[id].yield;
+    foodGain += y.food ?? 0;
+    woodGain += y.wood ?? 0;
+    stoneGain += y.stone ?? 0;
   }
 
   // Sheep slaughter standing order — runs across all shepherd tiles.
@@ -450,6 +490,24 @@ export function endYear(state: GameState): void {
   //   the year (elders, coming-of-age, births). Famine/bandit deaths remain on
   //   their own lines so they stay narratively distinct.
   emitPopulationTally(state, year, tally);
+
+  // Civic gates — child-labour decision triggers once the Long House exists
+  // (so the governance panel is available for follow-up flips) and there are
+  // enough children to put the question on the table. One-shot — after the
+  // first decision, the policy is revisitable from the Governance panel.
+  if (
+    state.buildings.long_house
+    && state.childPolicy === null
+    && !state.pendingChildDecision
+    && childCount(state) >= CHILD_DECISION_TRIGGER
+  ) {
+    state.pendingChildDecision = true;
+  }
+
+  // Building-unlock chronicle — fires once when each gated building's gate
+  // becomes satisfied. Hidden buildings need this announcement so players
+  // notice when the world has just opened up.
+  checkBuildingUnlocks(state, year);
 
   // 8. Game-over check and year advance.
   if (totalPop(state) <= 0) {
@@ -910,4 +968,138 @@ export function respectElders(state: GameState): LogEntry {
     text: `The elders set down their burdens. They will teach, counsel, and keep the oral record. Their wisdom is the settlement's inheritance. (+${MORALE_ELDER_RESPECTED_CHOICE} morale)`,
     tone: "good",
   };
+}
+
+// Child-labour first-decision handlers. Mirror of the elder pair above.
+export function setChildrenWorking(state: GameState): LogEntry {
+  state.childPolicy = "working";
+  state.pendingChildDecision = false;
+  applyMorale(state, MORALE_CHILD_WORK_CHOICE);
+  return {
+    year: state.year,
+    text: `${CHILD_WORK_LINE} (${MORALE_CHILD_WORK_CHOICE} morale; children contribute small floored food/wood yields each year)`,
+    tone: "neutral",
+  };
+}
+
+export function setChildrenFree(state: GameState): LogEntry {
+  state.childPolicy = "free";
+  state.pendingChildDecision = false;
+  applyMorale(state, MORALE_CHILD_FREE_CHOICE);
+  return {
+    year: state.year,
+    text: `${CHILD_FREE_LINE} (+${MORALE_CHILD_FREE_CHOICE} morale)`,
+    tone: "good",
+  };
+}
+
+// Governance-panel toggles. Each flip re-applies the original morale cost — so
+// reversibility doesn't make the choice weightless. Frostpunk's pattern: laws
+// can change, but every change carries the same friction as the first time.
+export function toggleElderPolicy(state: GameState): LogEntry | null {
+  if (state.elderPolicy === null) return null;
+  if (state.elderPolicy === "working") {
+    state.elderPolicy = "respected";
+    applyMorale(state, MORALE_ELDER_RESPECTED_CHOICE);
+    return {
+      year: state.year,
+      text: `${ELDER_FLIP_TO_RESPECT_LINE} (+${MORALE_ELDER_RESPECTED_CHOICE} morale)`,
+      tone: "good",
+    };
+  }
+  state.elderPolicy = "working";
+  applyMorale(state, MORALE_ELDER_WORK_CHOICE);
+  return {
+    year: state.year,
+    text: `${ELDER_FLIP_TO_WORK_LINE} (${MORALE_ELDER_WORK_CHOICE} morale)`,
+    tone: "neutral",
+  };
+}
+
+export function toggleChildPolicy(state: GameState): LogEntry | null {
+  if (state.childPolicy === null) return null;
+  if (state.childPolicy === "working") {
+    state.childPolicy = "free";
+    applyMorale(state, MORALE_CHILD_FREE_CHOICE);
+    return {
+      year: state.year,
+      text: `${CHILD_FLIP_TO_FREE_LINE} (+${MORALE_CHILD_FREE_CHOICE} morale)`,
+      tone: "good",
+    };
+  }
+  state.childPolicy = "working";
+  applyMorale(state, MORALE_CHILD_WORK_CHOICE);
+  return {
+    year: state.year,
+    text: `${CHILD_FLIP_TO_WORK_LINE} (${MORALE_CHILD_WORK_CHOICE} morale)`,
+    tone: "neutral",
+  };
+}
+
+// Town-centre upgrade construction. Same shape as the one-time BUILDINGS API
+// (canBuild / build / blockerReason) but stored on state.townUpgrades.
+export function townUpgradeBlockerReason(state: GameState, id: TownUpgradeId): string | null {
+  if (state.gameOver) return "Game over.";
+  if (state.townUpgrades[id]) return "Already built.";
+  const def: TownUpgradeDef = TOWN_UPGRADES[id];
+  const cost = def.cost;
+  const short: string[] = [];
+  if ((cost.food ?? 0) > state.food) short.push(`${(cost.food ?? 0) - state.food} food`);
+  if ((cost.wood ?? 0) > state.wood) short.push(`${(cost.wood ?? 0) - state.wood} wood`);
+  if ((cost.stone ?? 0) > state.stone) short.push(`${(cost.stone ?? 0) - state.stone} stone`);
+  if (short.length > 0) return `Short: ${short.join(", ")}.`;
+  return null;
+}
+
+export function canBuildTownUpgrade(state: GameState, id: TownUpgradeId): boolean {
+  return townUpgradeBlockerReason(state, id) === null;
+}
+
+export function buildTownUpgrade(state: GameState, id: TownUpgradeId): void {
+  if (!canBuildTownUpgrade(state, id)) return;
+  const def = TOWN_UPGRADES[id];
+  state.food -= def.cost.food ?? 0;
+  state.wood -= def.cost.wood ?? 0;
+  state.stone -= def.cost.stone ?? 0;
+  state.townUpgrades[id] = true;
+  state.log.unshift({
+    year: state.year,
+    text: TOWN_UPGRADE_BUILD_LINE[id],
+    tone: "good",
+  });
+}
+
+// Hide rule for the buildings panel. Gate-blocked buildings (pop, prereq,
+// death-trigger) disappear entirely — players were confused by buildings they
+// couldn't construct yet. The Long House is the one exception: it's the major
+// civic milestone and players need to see it as a goal, even pre-25-pops.
+export function isBuildingHidden(state: GameState, id: BuildingId): boolean {
+  if (state.buildings[id]) return false;
+  if (id === "long_house") return false;
+  const reason = buildBlockerReason(state, id);
+  if (!reason) return false;
+  return reason.startsWith("Requires") || reason.startsWith("Needs");
+}
+
+// Building-unlock chronicle hook. Iterates the gated buildings; fires the
+// unlock line the year each gate flips from blocked to satisfiable (resource
+// shortages don't count — that's not "unlocked," that's "saving up").
+function checkBuildingUnlocks(state: GameState, year: number): void {
+  const ids: BuildingId[] = ["long_house", "shrine_of_anata"];
+  for (const id of ids) {
+    if (state.unlockedBuildings[id]) continue;
+    if (state.buildings[id]) {
+      state.unlockedBuildings[id] = true;
+      continue;
+    }
+    const reason = buildBlockerReason(state, id);
+    const gateBlocked = !!reason && (reason.startsWith("Requires") || reason.startsWith("Needs"));
+    if (gateBlocked) continue;
+    state.unlockedBuildings[id] = true;
+    // Anata already has its own dedicated unlock line (legacy path). Don't
+    // double-fire — only emit a generic unlock line for buildings without one.
+    if (id === "shrine_of_anata") continue;
+    const text = BUILDING_UNLOCK_TEXT[id];
+    if (text) state.log.unshift({ year, text, tone: "good" });
+  }
 }

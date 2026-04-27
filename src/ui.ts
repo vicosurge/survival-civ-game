@@ -9,6 +9,7 @@ import {
   buildBlockerReason,
   buildHouse,
   buildRoad,
+  buildTownUpgrade,
   canBuildRoad,
   canDispatchBoat,
   canExecuteTradeBasket,
@@ -19,7 +20,13 @@ import {
   executeTradeBasket,
   fishingLossReduction,
   houseBlockerReason,
+  isBuildingHidden,
   respectElders,
+  setChildrenFree,
+  setChildrenWorking,
+  toggleChildPolicy,
+  toggleElderPolicy,
+  townUpgradeBlockerReason,
   unassignWorker,
 } from "./turn";
 import {
@@ -31,6 +38,8 @@ import {
   BuildingDef,
   BuildingId,
   CHICKEN_EGG_FOOD_RATE,
+  CHILD_WORK_FOOD_YIELD,
+  CHILD_WORK_WOOD_YIELD,
   COMPANIONS,
   CompanionId,
   DEPARTURE_TIMINGS,
@@ -50,6 +59,8 @@ import {
   MAP_W,
   MerchantVisit,
   ELDER_WORK_FOOD_YIELD,
+  MORALE_CHILD_FREE_CHOICE,
+  MORALE_CHILD_WORK_CHOICE,
   MORALE_ELDER_WORK_CHOICE,
   MORALE_ELDER_RESPECTED_CHOICE,
   MORALE_REFUGEE_ACCEPT,
@@ -63,6 +74,9 @@ import {
   ShipFateId,
   Tile,
   TILE_SIZE,
+  TOWN_UPGRADES,
+  TownUpgradeDef,
+  TownUpgradeId,
   TRADE_RATES,
   TradeBasket,
   TradeResource,
@@ -243,17 +257,17 @@ function hideIntro(): void {
 
 const WIZARD_NARRATIVES: Record<string, string> = {
   origin:
-    "You had only minutes to decide what mattered most. The ship was small, the crossing unknown, and the northern island uncharted. One last thing — what did you bring?",
+    "Bandits have been spotted in a nearby village — you cannot stay any longer. You must sail tomorrow. The ship is small, the crossing unknown, and the northern island uncharted. One last thing — what do you bring?",
   companion:
     "Word had spread that you were leaving — the kind of word that moves between cellars and back doors. Two strangers found you in the last hours, both capable, both willing. You had room for one. Perhaps neither, if the food was thinner than you wanted to admit.",
   timing:
     "The ship was loaded, mostly. A few more hours and you could fit another crate of tools, another sack of grain. But you could see lanterns moving on the hill above the village. Stay, or go?",
   alarm:
     "The bells started at dusk. Three short peals — the signal for fire or worse. You were at the dock; your ship was ready, the lines about to come off. Across the square, you could see the cellar door — the winter stores were still inside. They would never serve their owners now. The choice was yours, and quick.",
-  ship:
-    "Cambrera. The island was smaller than the old charts had suggested — they were drawn before the war, by sailors who had no reason to lie about its size, only its colour. After three days offshore you found a cove and ran the bow into the sand. The ship had served. Now — what happens to her?",
   landing:
-    "The coastline of Cambrera stretched in both directions. The mountain at the island's heart rose dark behind the surf — its old volcano dormant for centuries, but the ash that fed the shores still good for the plough. Wherever you beached, that would be home. Where do you put the keel down?",
+    "Cambrera. The island was smaller than the old charts had suggested — they were drawn before the war, by sailors who had no reason to lie about its size, only its colour. The mountain at its heart rose dark behind the surf — an old volcano, dormant for centuries, but the ash that fed the shores still good for the plough. Wherever you beached, that would be home. Where do you put the keel down?",
+  ship:
+    "The bow grates against the sand. After three days at sea you have made landfall, and the ship that brought you sits in the shallows — empty, salt-stained, idle. She has served. Now — what happens to her?",
 };
 
 export function showDepartureWizard(onComplete: (choices: DepartureChoices) => void): void {
@@ -275,8 +289,8 @@ export function showDepartureWizard(onComplete: (choices: DepartureChoices) => v
     { key: "companion", ids: Object.keys(COMPANIONS) as CompanionId[],             defs: COMPANIONS },
     { key: "timing",    ids: Object.keys(DEPARTURE_TIMINGS) as DepartureTimingId[], defs: DEPARTURE_TIMINGS },
     { key: "alarm",     ids: Object.keys(ALARM_RESPONSES) as AlarmResponseId[],    defs: ALARM_RESPONSES },
-    { key: "ship",      ids: Object.keys(SHIP_FATES) as ShipFateId[],              defs: SHIP_FATES },
     { key: "landing",   ids: Object.keys(LANDING_SPOTS) as LandingSpotId[],        defs: LANDING_SPOTS },
+    { key: "ship",      ids: Object.keys(SHIP_FATES) as ShipFateId[],              defs: SHIP_FATES },
   ];
 
   const stepTitles: Record<string, string> = {
@@ -284,8 +298,8 @@ export function showDepartureWizard(onComplete: (choices: DepartureChoices) => v
     companion: "Who came with you?",
     timing:    "The moment of departure",
     alarm:     "The alarm bells",
-    ship:      "The ship",
     landing:   "Where do you land?",
+    ship:      "The ship",
   };
 
   let stepIdx = 0;
@@ -365,7 +379,11 @@ export function renderUI(state: GameState, onAllocChange: () => void): void {
   renderTilePopup(state);
   renderLog(state);
   const endBtn = document.getElementById("end-turn-btn") as HTMLButtonElement;
-  endBtn.disabled = state.gameOver || state.merchantVisit !== null || !!state.pendingRefugees || state.pendingElderDecision;
+  endBtn.disabled = state.gameOver
+    || state.merchantVisit !== null
+    || !!state.pendingRefugees
+    || state.pendingElderDecision
+    || state.pendingChildDecision;
   endBtn.textContent = state.gameOver
     ? "— Settlement Failed —"
     : state.merchantVisit !== null
@@ -374,7 +392,9 @@ export function renderUI(state: GameState, onAllocChange: () => void): void {
         ? "Refugees at the gate…"
         : state.pendingElderDecision
           ? "Council awaiting…"
-          : "End Year";
+          : state.pendingChildDecision
+            ? "Council awaiting…"
+            : "End Year";
 }
 
 export function maybeShowTradeModal(state: GameState, onResolve: () => void): void {
@@ -792,11 +812,251 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
 function renderBuildingsPanel(state: GameState, onChange: () => void): void {
   const panel = document.getElementById("buildings-panel")!;
   panel.innerHTML = "";
+
+  // Town-centre upgrades render first — they're stabilising infrastructure,
+  // available from turn 1, and visually separated from the one-time buildings
+  // by the dashed border on the last upgrade row.
+  for (const id of Object.keys(TOWN_UPGRADES) as TownUpgradeId[]) {
+    panel.appendChild(townUpgradeRow(state, TOWN_UPGRADES[id], onChange));
+  }
+
+  // One-time buildings — gate-blocked ones are hidden until their gate is met
+  // (long_house excepted: it's the major civic milestone and stays visible).
   const ids = Object.keys(BUILDINGS) as BuildingId[];
   for (const id of ids) {
+    if (isBuildingHidden(state, id)) continue;
     panel.appendChild(buildingRow(state, BUILDINGS[id], onChange));
   }
   panel.appendChild(houseRow(state, onChange));
+
+  // Governance opener — surfaces only once the Long House civic anchor is up.
+  if (state.buildings.long_house) {
+    panel.appendChild(governanceOpenerRow(state, onChange));
+  }
+}
+
+function townUpgradeRow(state: GameState, def: TownUpgradeDef, onChange: () => void): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "building-row town-upgrade-row";
+  row.title = def.description;
+  const built = state.townUpgrades[def.id];
+
+  if (built) {
+    row.classList.add("built");
+    const name = document.createElement("span");
+    name.className = "building-name";
+    name.textContent = `✓ ${def.name}`;
+    row.append(name);
+    return row;
+  }
+
+  const name = document.createElement("span");
+  name.className = "building-name";
+  name.textContent = def.name;
+
+  const cost = document.createElement("span");
+  cost.className = "building-cost";
+  // Cast through BuildingDef to reuse costChips. The "id" is unused at this
+  // path so we don't need to invent a fake BuildingId.
+  const costShim: BuildingDef = {
+    id: def.id as unknown as BuildingId,
+    name: def.name,
+    description: def.description,
+    cost: def.cost,
+  };
+  cost.append(...costChips(state, costShim));
+
+  const btn = document.createElement("button");
+  btn.textContent = "Build";
+  const blocker = townUpgradeBlockerReason(state, def.id);
+  btn.disabled = blocker !== null;
+  btn.title = blocker ?? def.description;
+  btn.addEventListener("click", () => {
+    buildTownUpgrade(state, def.id);
+    onChange();
+  });
+
+  row.append(name, cost, btn);
+  return row;
+}
+
+function governanceOpenerRow(state: GameState, onChange: () => void): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "building-row governance-opener-row";
+  row.title = "Review and revisit standing laws (elder labour, child labour, future).";
+
+  const name = document.createElement("span");
+  name.className = "building-name";
+  name.textContent = "Governance";
+
+  const detail = document.createElement("span");
+  detail.className = "governance-summary";
+  const parts: string[] = [];
+  if (state.elderPolicy !== null) parts.push(`elders: ${state.elderPolicy}`);
+  if (state.childPolicy !== null) parts.push(`children: ${state.childPolicy}`);
+  detail.textContent = parts.length > 0 ? parts.join(", ") : "no laws yet";
+
+  const btn = document.createElement("button");
+  btn.textContent = "Open";
+  btn.addEventListener("click", () => {
+    showGovernanceModal(state, onChange);
+  });
+
+  row.append(name, detail, btn);
+  return row;
+}
+
+// ─── Governance modal ─────────────────────────────────────────────────────────
+// Reusable panel surfaced from the Long House. Lists currently-active civic
+// laws with toggle buttons. Re-applying the cost on every flip keeps reversible
+// decisions weighty (Frostpunk pattern).
+
+function showGovernanceModal(state: GameState, onChange: () => void): void {
+  const overlay = document.getElementById("governance-overlay")!;
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+
+  const close = (): void => {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    onChange();
+  };
+
+  const rerender = (): void => {
+    overlay.innerHTML = buildGovernanceHTML(state);
+    overlay.querySelector<HTMLButtonElement>(".governance-close")!.addEventListener("click", close);
+    overlay.querySelector<HTMLButtonElement>(".elder-toggle-btn")?.addEventListener("click", () => {
+      const entry = toggleElderPolicy(state);
+      if (entry) state.log.unshift(entry);
+      rerender();
+    });
+    overlay.querySelector<HTMLButtonElement>(".child-toggle-btn")?.addEventListener("click", () => {
+      const entry = toggleChildPolicy(state);
+      if (entry) state.log.unshift(entry);
+      rerender();
+    });
+  };
+
+  rerender();
+}
+
+function buildGovernanceHTML(state: GameState): string {
+  const laws: string[] = [];
+
+  if (state.elderPolicy !== null) {
+    const working = state.elderPolicy === "working";
+    const currentLabel = working ? "Working" : "Respected";
+    const flipLabel = working ? "Honour their rest" : "Put them to work";
+    const flipMorale = working ? `+${MORALE_ELDER_RESPECTED_CHOICE}` : `${MORALE_ELDER_WORK_CHOICE}`;
+    const summary = working
+      ? `Elders contribute light tasks (+${ELDER_WORK_FOOD_YIELD} food/year each).`
+      : "Elders teach, counsel, and rest.";
+    laws.push(`
+      <div class="governance-law">
+        <div class="governance-law-head">
+          <span class="governance-law-name">Elders</span>
+          <span class="governance-law-state">${currentLabel}</span>
+        </div>
+        <p class="governance-law-summary">${summary}</p>
+        <button class="elder-toggle-btn">${flipLabel} (${flipMorale} morale)</button>
+      </div>
+    `);
+  }
+
+  if (state.childPolicy !== null) {
+    const working = state.childPolicy === "working";
+    const currentLabel = working ? "Working" : "Free";
+    const flipLabel = working ? "Release them from chores" : "Call them to small tasks";
+    const flipMorale = working ? `+${MORALE_CHILD_FREE_CHOICE}` : `${MORALE_CHILD_WORK_CHOICE}`;
+    const summary = working
+      ? `Children gather and tend (+${CHILD_WORK_FOOD_YIELD} food, +${CHILD_WORK_WOOD_YIELD} wood per child/year, floored).`
+      : "Children play, learn, and grow up.";
+    laws.push(`
+      <div class="governance-law">
+        <div class="governance-law-head">
+          <span class="governance-law-name">Children</span>
+          <span class="governance-law-state">${currentLabel}</span>
+        </div>
+        <p class="governance-law-summary">${summary}</p>
+        <button class="child-toggle-btn">${flipLabel} (${flipMorale} morale)</button>
+      </div>
+    `);
+  }
+
+  const body = laws.length > 0
+    ? laws.join("")
+    : `<p class="governance-empty">No civic laws are in force yet. Decisions will appear here as the settlement faces them.</p>`;
+
+  return `
+    <div id="governance-panel" role="dialog" aria-label="Governance">
+      <h2>The Long House</h2>
+      <p class="governance-flavor">
+        Standing laws of the settlement. Each flip carries the same weight as the first decision —
+        the people remember.
+      </p>
+      ${body}
+      <div class="governance-buttons">
+        <button class="governance-close">Close</button>
+      </div>
+    </div>
+  `;
+}
+
+// First-time child-decision modal — same shape as the elder one. Triggered by
+// state.pendingChildDecision in the turn pipeline.
+export function maybeShowChildDecisionModal(state: GameState, onResolve: () => void): void {
+  const overlay = document.getElementById("child-overlay")!;
+  if (!state.pendingChildDecision || state.gameOver) {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    return;
+  }
+
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+
+  overlay.innerHTML = `
+    <div id="child-panel" role="dialog" aria-label="The Question of the Children">
+      <h2>The Question of the Children</h2>
+      <p class="refugees-flavor">
+        ${childCount(state)} children now run between the huts. With the Long House standing,
+        the village asks the question openly: should the young be put to small tasks alongside the adults,
+        or kept to their own days while the settlement can still afford it?
+      </p>
+      <div class="elder-choices">
+        <div class="elder-choice">
+          <h3>Children Help</h3>
+          <p>They gather kindling, weed the garden, watch the chickens.
+             <strong>+${CHILD_WORK_FOOD_YIELD} food, +${CHILD_WORK_WOOD_YIELD} wood per child/year</strong> (floored).
+             Some grumble that childhood is short enough.</p>
+          <button class="child-btn-work">Put them to small tasks (${MORALE_CHILD_WORK_CHOICE} morale)</button>
+        </div>
+        <div class="elder-choice">
+          <h3>Children Stay Free</h3>
+          <p>They play and learn from the elders. The settlement carries them — for now.
+             The community is glad of the choice.</p>
+          <button class="child-btn-free">Let them be children (+${MORALE_CHILD_FREE_CHOICE} morale)</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector<HTMLButtonElement>(".child-btn-work")!.addEventListener("click", () => {
+    state.log.unshift(setChildrenWorking(state));
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    onResolve();
+  });
+  overlay.querySelector<HTMLButtonElement>(".child-btn-free")!.addEventListener("click", () => {
+    state.log.unshift(setChildrenFree(state));
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    onResolve();
+  });
 }
 
 function buildingRow(state: GameState, def: BuildingDef, onChange: () => void): HTMLElement {

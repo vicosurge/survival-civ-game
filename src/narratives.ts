@@ -38,6 +38,51 @@ export function additionalHouseLine(totalHouses: number): string {
 export const QUARRY_EXHAUSTED_LINE =
   "The quarry runs dry. Quarrymen abandon the seam and return to the settlement — there is nothing left to take here.";
 
+// Building-unlock chronicle lines — fired the year a gated building's
+// requirements first become satisfied. Hidden buildings need this so players
+// notice when something new becomes possible (otherwise hidden = invisible).
+// Only buildings with non-resource gates appear here; resource-only blockers
+// stay visible in the panel and don't need an unlock beat.
+//
+// The Shrine of Anata has its own dedicated unlock line (ANATA_UNLOCK_LINE,
+// fired from the legacy old-age-death path in turn.ts) and is intentionally
+// absent from this map.
+import type { BuildingId } from "./types";
+export const BUILDING_UNLOCK_TEXT: Partial<Record<BuildingId, string>> = {
+  long_house:
+    "Twenty-five souls now shelter on Cambrera. Voices around the fire speak of a Long House — a roof tall enough to gather under, a place to decide together.",
+};
+
+// Town-centre upgrade chronicle lines — emitted the turn each upgrade is
+// completed. Frame the upgrade as the settlement maturing around the hut,
+// not as a discrete building going up.
+import type { TownUpgradeId } from "./types";
+export const TOWN_UPGRADE_BUILD_LINE: Record<TownUpgradeId, string> = {
+  communal_garden:
+    "A communal garden is fenced beside the hut. Beans, gourds, and herbs — small hands tend it through the day.",
+  workshop_yard:
+    "A workshop yard is walled in. Loose timber, kindling, and broken tools find their way here — sorted, mended, kept.",
+};
+
+// Civic-decision chronicle lines for the child labour question. Mirror of the
+// elder lines in turn.ts; emitted by the governance modal handlers.
+export const CHILD_WORK_LINE =
+  "The children take up small tasks — gathering kindling, weeding the garden rows, watching the chickens. They are not idle, and the hands are real.";
+export const CHILD_FREE_LINE =
+  "The children are left to their own days — to play, to learn from the elders, to be children. The settlement is the better for it.";
+
+// Governance-panel flip lines — emitted when an existing law is toggled via
+// the Governance panel. Re-application is the friction that keeps reversible
+// decisions weighty: each flip costs (or rewards) morale fresh.
+export const ELDER_FLIP_TO_WORK_LINE =
+  "The elders are called back to small tasks. Some go willingly; some go because they are asked.";
+export const ELDER_FLIP_TO_RESPECT_LINE =
+  "The elders set down their tools again. The community remembers what they have already given.";
+export const CHILD_FLIP_TO_WORK_LINE =
+  "The children are called from their games. The work is light, but it is work.";
+export const CHILD_FLIP_TO_FREE_LINE =
+  "The children are released from chores. The settlement chooses to feed them and ask nothing back.";
+
 // Tooltip copy on each row of the villager allocator (#20). Players new to the
 // game don't know what each job does, what tile it claims, or why a + button is
 // grayed out. One sentence each — terse, mechanical, but voice-consistent. The

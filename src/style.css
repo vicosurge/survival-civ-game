@@ -838,6 +838,207 @@ html, body {
 }
 .elder-btn-respect:hover { background: #8a5415; }
 
+#child-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+  padding: 1.5rem;
+}
+#child-overlay.hidden { display: none; }
+
+#child-panel {
+  max-width: 560px;
+  width: 100%;
+  background:
+    radial-gradient(ellipse at 20% 10%, rgba(120, 80, 40, 0.12), transparent 60%),
+    linear-gradient(180deg, #e9d7a9 0%, #d9c28a 100%);
+  color: #3a2814;
+  border: 2px solid #5c4320;
+  box-shadow:
+    0 0 0 4px #a88556 inset,
+    0 0 24px rgba(0, 0, 0, 0.6);
+  padding: 1.75rem;
+  font-family: "Georgia", "Times New Roman", serif;
+}
+
+#child-panel h2 {
+  margin: 0 0 0.75rem 0;
+  text-align: center;
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+  color: #6b3f0f;
+  text-transform: uppercase;
+  font-weight: normal;
+}
+
+#child-panel > p {
+  font-style: italic;
+  margin: 0 0 1.25rem 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.child-btn-work, .child-btn-free {
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  text-transform: uppercase;
+  border: 2px solid #3a2814;
+}
+.child-btn-work {
+  background: #5a3820;
+  color: #f0e2b8;
+}
+.child-btn-work:hover { background: #7a4e2e; }
+.child-btn-free {
+  background: #6b3f0f;
+  color: #f0e2b8;
+}
+.child-btn-free:hover { background: #8a5415; }
+
+#governance-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 92;
+  padding: 1.5rem;
+}
+#governance-overlay.hidden { display: none; }
+
+#governance-panel {
+  max-width: 520px;
+  width: 100%;
+  background:
+    radial-gradient(ellipse at 20% 10%, rgba(120, 80, 40, 0.12), transparent 60%),
+    linear-gradient(180deg, #e9d7a9 0%, #d9c28a 100%);
+  color: #3a2814;
+  border: 2px solid #5c4320;
+  box-shadow:
+    0 0 0 4px #a88556 inset,
+    0 0 24px rgba(0, 0, 0, 0.6);
+  padding: 1.75rem;
+  font-family: "Georgia", "Times New Roman", serif;
+}
+
+#governance-panel h2 {
+  margin: 0 0 0.75rem 0;
+  text-align: center;
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+  color: #6b3f0f;
+  text-transform: uppercase;
+  font-weight: normal;
+}
+
+.governance-flavor {
+  font-style: italic;
+  margin: 0 0 1.25rem 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.governance-empty {
+  margin: 1rem 0;
+  font-style: italic;
+  text-align: center;
+  color: #5c4320;
+}
+
+.governance-law {
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.85rem;
+  background: rgba(92, 67, 32, 0.07);
+  border: 1px solid rgba(92, 67, 32, 0.3);
+}
+.governance-law:last-of-type { margin-bottom: 1rem; }
+
+.governance-law-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+}
+.governance-law-name {
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  color: #6b3f0f;
+  text-transform: uppercase;
+  font-size: 0.95rem;
+}
+.governance-law-state {
+  font-size: 0.82rem;
+  color: #3a6b0f;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: "Courier New", Courier, monospace;
+}
+
+.governance-law-summary {
+  margin: 0 0 0.6rem 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.governance-law button {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  text-transform: uppercase;
+  border: 2px solid #3a2814;
+  background: #5a3820;
+  color: #f0e2b8;
+}
+.governance-law button:hover { background: #7a4e2e; }
+
+.governance-buttons {
+  display: flex;
+  justify-content: center;
+}
+.governance-close {
+  padding: 0.45rem 1.4rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  text-transform: uppercase;
+  border: 2px solid #3a2814;
+  background: transparent;
+  color: #3a2814;
+}
+.governance-close:hover { background: rgba(92, 67, 32, 0.15); }
+
+/* Town-upgrade row marker — slightly muted name, italic to distinguish from
+   one-time buildings without making the section feel like a separate panel. */
+.town-upgrade-row .building-name { font-style: italic; }
+
+.governance-opener-row {
+  border-top: 2px solid var(--panel-edge);
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+}
+.governance-summary {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
 #departure-overlay {
   position: fixed;
   inset: 0;

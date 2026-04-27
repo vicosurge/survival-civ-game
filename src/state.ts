@@ -3,6 +3,8 @@ import {
   ADULT_AGE,
   ALARM_RESPONSES,
   CHICKEN_CAP_INITIAL,
+  CHILD_WORK_FOOD_YIELD,
+  CHILD_WORK_WOOD_YIELD,
   COMPANIONS,
   DEPARTURE_TIMINGS,
   DepartureChoices,
@@ -38,6 +40,8 @@ import {
   STARTER_AGE_RANGE,
   STARTER_CHILD_AGE_RANGE,
   STARTER_LIFESPAN_FLOOR_BONUS,
+  TOWN_UPGRADES,
+  TownUpgradeId,
   YIELD_PER_WORKER,
   CHICKEN_EGG_FOOD_RATE,
 } from "./types";
@@ -129,7 +133,11 @@ export function newGame(departure: DepartureChoices): GameState {
     elderTransitions: 0,
     elderPolicy: null,
     pendingElderDecision: false,
+    childPolicy: null,
+    pendingChildDecision: false,
     buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, long_house: false, shrine_of_anata: false, chicken_coop: false },
+    unlockedBuildings: { granary: true, palisade: true, well: true, hunting_lodge: true, long_house: false, shrine_of_anata: false, chicken_coop: true },
+    townUpgrades: { communal_garden: false, workshop_yard: false },
     houses: 0,
     wool: 0,
     sheepSlaughter: 0,
@@ -322,6 +330,24 @@ export function projectedYields(state: GameState): {
   foodProd += state.houses * HOUSE_FOOD_YIELD;
   if (state.buildings.chicken_coop && state.chickens > 0) {
     foodProd += Math.floor(state.chickens * CHICKEN_EGG_FOOD_RATE);
+  }
+
+  // Town-centre upgrades — small passive trickles. Iterate the table so adding
+  // a new upgrade in types.ts auto-extends the projection.
+  for (const id of Object.keys(TOWN_UPGRADES) as TownUpgradeId[]) {
+    if (!state.townUpgrades[id]) continue;
+    const y = TOWN_UPGRADES[id].yield;
+    foodProd += y.food ?? 0;
+    woodProd += y.wood ?? 0;
+    stoneProd += y.stone ?? 0;
+  }
+
+  // Working children contribute small floored yields. Same convention as elder
+  // labour — the policy is reversible via Governance.
+  if (state.childPolicy === "working") {
+    const kids = state.pops.filter((p) => p.age + 1 < ADULT_AGE && p.age + 1 < p.lifespan).length;
+    foodProd += Math.floor(kids * CHILD_WORK_FOOD_YIELD);
+    woodProd += Math.floor(kids * CHILD_WORK_WOOD_YIELD);
   }
 
   let futureAdults = 0;

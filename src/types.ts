@@ -92,6 +92,41 @@ export type TradeResource = "food" | "wood" | "stone" | "wool";
 
 export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "long_house" | "shrine_of_anata" | "chicken_coop";
 
+// Town-centre upgrades — repeatable infrastructure layer that lives outside the
+// one-time BUILDINGS table. The Communal Garden + Workshop Yard are tier-1
+// upgrades available from turn 1; the Long House will eventually unlock tier-2
+// (Market Square / Civic Hall — not yet implemented). Passive yields apply at
+// turn step 1 alongside building-derived yields.
+export type TownUpgradeId = "communal_garden" | "workshop_yard";
+
+export interface TownUpgradeDef {
+  id: TownUpgradeId;
+  name: string;
+  description: string;
+  cost: { food?: number; wood?: number; stone?: number };
+  // Per-year passive yields. Integer only — fractional trickles get confusing
+  // ("why doesn't my stone count go up?"). Keep these tiny on purpose so the
+  // worker assignment loop stays meaningful.
+  yield: { food?: number; wood?: number; stone?: number };
+}
+
+export const TOWN_UPGRADES: Record<TownUpgradeId, TownUpgradeDef> = {
+  communal_garden: {
+    id: "communal_garden",
+    name: "Communal Garden",
+    description: "A fenced plot beside the hut, worked by hands that come and go through the day. +1 food/year, no worker required.",
+    cost: { food: 5, wood: 5 },
+    yield: { food: 1 },
+  },
+  workshop_yard: {
+    id: "workshop_yard",
+    name: "Workshop Yard",
+    description: "A walled yard where children and idle hands gather sticks, sort kindling, and tidy loose timber. +1 wood/year, no worker required.",
+    cost: { wood: 8, stone: 5 },
+    yield: { wood: 1 },
+  },
+};
+
 // A pending merchant visit with cargo capacity and what they brought to sell.
 // Replaces the old `pendingMerchant: boolean` flag. The cargo model: merchants
 // arrive with cargoCapacity total slots, some already occupied by their sellStock.
@@ -216,12 +251,12 @@ export interface DepartureTimingDef {
 export const DEPARTURE_TIMINGS: Record<DepartureTimingId, DepartureTimingDef> = {
   prepared: {
     id: "prepared", name: "Keep packing",
-    bonusText: "+5 wood, +3 stone — loaded properly. Word will have spread that you were leaving.",
+    bonusText: "+5 wood, +3 stone — loaded properly. The bandits will see your ship taking off.",
     startingBonus: { wood: 5, stone: 3 }, pursuedRisk: true,
   },
   hasty: {
-    id: "hasty", name: "Leave now",
-    bonusText: "No extra supplies — whatever you grabbed in the dark is what you have.",
+    id: "hasty", name: "Leave now, before dawn",
+    bonusText: "No extra supplies — whatever you grabbed in the dark is what you have. They never see which way you went.",
     startingBonus: {}, pursuedRisk: false,
   },
 };
@@ -330,7 +365,11 @@ export interface GameState {
   elderTransitions: number;     // lifetime count of adult→elder crossings
   elderPolicy: "working" | "respected" | null;  // null = decision not yet made
   pendingElderDecision: boolean;  // true while waiting for player to decide
+  childPolicy: "working" | "free" | null;  // null = decision not yet made
+  pendingChildDecision: boolean;  // true while waiting for player to decide
   buildings: Record<BuildingId, boolean>;
+  unlockedBuildings: Record<BuildingId, boolean>;  // dedup flag for per-building unlock chronicle lines
+  townUpgrades: Record<TownUpgradeId, boolean>;
   houses: number;
   sheepSlaughter: number;             // standing order: sheep to cull per year across all shepherd tiles
   sheepSlaughterNotified: boolean;    // one-shot: player told about the slaughter mechanic
@@ -444,10 +483,26 @@ export const SCRIPTED_WAVE_JITTER = 3;
 // Elder labour policy decision — fires when the 5th adult transitions to elder.
 // "working": elders keep contributing light tasks (+0.5 food each/yr, -3 morale at choice).
 // "respected": elders govern and teach (+5 morale at choice, no labour).
+// Now revisitable via the Governance panel once the Long House is built —
+// each flip applies the same morale cost so reversibility doesn't make the
+// choice weightless.
 export const ELDER_DECISION_TRIGGER = 5;
 export const ELDER_WORK_FOOD_YIELD = 0.5;
 export const MORALE_ELDER_WORK_CHOICE = -3;
 export const MORALE_ELDER_RESPECTED_CHOICE = 5;
+
+// Child labour policy decision — fires when the Long House exists AND there are
+// CHILD_DECISION_TRIGGER children to put the question on the table. Frostpunk-
+// style civic decision; the working option produces a tiny food/wood trickle
+// (kids tending gardens, sorting kindling) at a real morale cost.
+// Yields are floored at apply time, so 3 working children produce +1 food and
+// +0 wood (3 × 0.3 = 0.9). Numbers stay deliberately stingy so children can
+// help, but never replace adult labour.
+export const CHILD_DECISION_TRIGGER = 3;
+export const CHILD_WORK_FOOD_YIELD = 0.5;
+export const CHILD_WORK_WOOD_YIELD = 0.3;
+export const MORALE_CHILD_WORK_CHOICE = -4;
+export const MORALE_CHILD_FREE_CHOICE = 3;
 // Minimum years between consecutive waves (after jitter).
 export const SCRIPTED_WAVE_MIN_GAP = 3;
 export const SCRIPTED_WAVE_REFUGEES = 2;
@@ -573,4 +628,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v22";
+export const SAVE_KEY = "isle-of-cambrera-save-v23";
