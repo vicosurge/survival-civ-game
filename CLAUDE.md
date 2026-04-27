@@ -33,7 +33,7 @@ Requires Node ≥ 18.
 - TypeScript (strict mode, noUnusedLocals + noUnusedParameters on)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage saves, single slot. Current key: `isle-of-cambrera-save-v23`. **Bump on any breaking state-shape change.** Old saves must fail loud (parse/validation error → `newGame()`), not load silently with `NaN`/`undefined` fields.
+- localStorage saves, single slot. Current key: `isle-of-cambrera-save-v24`. **Bump on any breaking state-shape change.** Old saves must fail loud (parse/validation error → `newGame()`), not load silently with `NaN`/`undefined` fields.
 - **No engine, no UI framework.** If UI complexity demands it, React can layer in — don't reach for Phaser/Pixi/Godot.
 
 Version history lives in git log + README. This file describes current state only.
@@ -348,6 +348,14 @@ Six-step pre-game wizard. `state.departure: DepartureChoices` persists the picks
 - Entries carry `tone: "neutral" | "good" | "bad"` for CSS styling.
 - `renderLog` brackets consecutive same-year entries in `.year-group` with a `.year-header` ("— Year N —").
 - **Single population tally per turn.** Elder deaths, coming-of-age, and births route through a `tally` object in `endYear` and emit one combined line via `emitPopulationTally`. **Don't fold famine/bandit/event deaths into the tally** — those belong to the event that caused them and want their own tonal emphasis. The tally is for the quiet turning of the year.
+- **Cap is 2000 entries** (turn.ts, end of `endYear`). Raised from 120 so a full run isn't truncated before export. At ~80 chars/entry that's ~160 KB worst case — comfortable in localStorage.
+
+### Chronicle export + post-mortem feedback
+
+- **Export Chronicle** button in the feedback strip (`#export-chronicle-btn`) downloads `state.log` as a plain-text file `cambrera-chronicle-yearN.txt`. Oldest year first (reading order — opposite of the in-game display), with a metadata header (version, year reached, status, pops, resources, morale, departure choices). `serializeChronicle(state)` in ui.ts is the single source of truth — also reused by the feedback chronicle attach.
+- **Include chronicle** checkbox on the feedback modal (`#fb-include-chronicle`) attaches the same serialized text to the POST body when checked. Client trims to 256 KB if oversized; the worker rejects above 512 KB.
+- **Game-over auto-prompt:** on the redraw after `state.gameOver` flips true, `maybeShowGameOverFeedback` opens the feedback modal with the chronicle attach pre-checked and an alternate intro line. One-shot per save via `state.gameOverFeedbackShown` — re-loading a fallen settlement won't re-prompt. The auto-prompt skips if any blocking modal (trade, refugees, elder/child decisions) is still pending.
+- **Worker schema** (`feedback-worker/schema.sql`): `chronicle TEXT` column added. Existing deployments need the migration noted in `feedback-worker/instructions.md`. Dashboard renders chronicles in a `<details>` block per row.
 
 ## Turn pipeline (src/turn.ts)
 

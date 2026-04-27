@@ -1,7 +1,7 @@
 import { HELP_SECTIONS } from "./help";
 import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReach, totalReachableCapacity } from "./map";
 import { JOB_TOOLTIPS } from "./narratives";
-import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, sheepHerdTotal, totalPop } from "./state";
+import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, saveGame, sheepHerdTotal, totalPop } from "./state";
 import {
   acceptElderWork,
   acceptRefugees,
@@ -93,8 +93,12 @@ export interface UIHandlers {
 
 const SKIP_INTRO_KEY = "isle-of-cambrera-skip-intro";
 const FEEDBACK_WORKER_URL = "https://cambrera.digimente.xyz/feedback";
+const CHRONICLE_PAYLOAD_LIMIT = 256 * 1024;  // 256 KB; soft cap. The worker accepts up to 512KB.
 
 let _selectedRating = 0;
+// Latest GameState reference, refreshed every renderUI call. Static button
+// handlers (export, feedback submit) read it without needing per-render rebinds.
+let _stateRef: GameState | null = null;
 
 // Callback dispatched when the player clicks Begin in the intro overlay.
 // Updated each time maybeShowIntro is called so the handler is always current.
@@ -108,6 +112,7 @@ export function initUI(handlers: UIHandlers): void {
   renderStaticCredits();
   initIntroHandlers();
   initFeedbackModal();
+  initExportChronicle();
   initHelpHandlers();
   initMusicHandlers();
 }
@@ -138,7 +143,7 @@ function initIntroHandlers(): void {
 // ─── Feedback modal ───────────────────────────────────────────────────────────
 
 function initFeedbackModal(): void {
-  document.getElementById("feedback-btn")!.addEventListener("click", showFeedbackModal);
+  document.getElementById("feedback-btn")!.addEventListener("click", () => showFeedbackModal());
   document.getElementById("fb-cancel")!.addEventListener("click", hideFeedbackModal);
   document.getElementById("fb-submit")!.addEventListener("click", () => { void submitFeedback(); });
   document.getElementById("fb-text")!.addEventListener("input", () => {
@@ -171,7 +176,7 @@ function updateRatingButtons(): void {
   });
 }
 
-function showFeedbackModal(): void {
+function showFeedbackModal(opts: { gameOver?: boolean; defaultIncludeChronicle?: boolean } = {}): void {
   _selectedRating = 0;
   (document.getElementById("fb-name")! as HTMLInputElement).value = "";
   (document.getElementById("fb-text")! as HTMLTextAreaElement).value = "";
@@ -181,10 +186,28 @@ function showFeedbackModal(): void {
   document.getElementById("fb-status")!.className = "";
   (document.getElementById("fb-submit")! as HTMLButtonElement).disabled = false;
   (document.getElementById("fb-submit")! as HTMLButtonElement).textContent = "Send";
+  document.getElementById("fb-intro")!.textContent = opts.gameOver
+    ? "Your settlement has fallen. If you have a moment, tell us what happened — your chronicle helps us tune the early game."
+    : "Help improve Isle of Cambrera. Takes about a minute.";
+  const includeBox = document.getElementById("fb-include-chronicle") as HTMLInputElement;
+  includeBox.checked = opts.defaultIncludeChronicle ?? false;
+  updateChronicleSizeHint();
   updateRatingButtons();
   const overlay = document.getElementById("feedback-overlay")!;
   overlay.classList.remove("hidden");
   overlay.setAttribute("aria-hidden", "false");
+}
+
+function updateChronicleSizeHint(): void {
+  const hint = document.getElementById("fb-chronicle-size");
+  if (!hint) return;
+  if (!_stateRef) {
+    hint.textContent = "";
+    return;
+  }
+  const text = serializeChronicle(_stateRef);
+  const kb = Math.max(1, Math.round(text.length / 1024));
+  hint.textContent = `(~${kb} KB; ${_stateRef.log.length} entries)`;
 }
 
 function hideFeedbackModal(): void {
@@ -198,6 +221,7 @@ async function submitFeedback(): Promise<void> {
   const text = (document.getElementById("fb-text")! as HTMLTextAreaElement).value.trim();
   const status = document.getElementById("fb-status")!;
   const btn = document.getElementById("fb-submit")! as HTMLButtonElement;
+  const includeChronicle = (document.getElementById("fb-include-chronicle") as HTMLInputElement).checked;
 
   if (_selectedRating === 0) {
     status.textContent = "Please select a rating.";
@@ -214,11 +238,27 @@ async function submitFeedback(): Promise<void> {
   btn.textContent = "Sending…";
   status.textContent = "";
 
+  let chronicle: string | undefined;
+  if (includeChronicle && _stateRef) {
+    chronicle = serializeChronicle(_stateRef);
+    if (chronicle.length > CHRONICLE_PAYLOAD_LIMIT) {
+      // Soft trim from the oldest end so the recent (most diagnostic) entries
+      // survive. The header line stays at the top so the worker still parses it.
+      chronicle = chronicle.slice(0, CHRONICLE_PAYLOAD_LIMIT) + "\n\n[chronicle truncated to fit upload limit]";
+    }
+  }
+
   try {
     const res = await fetch(FEEDBACK_WORKER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tester_name: name, rating: _selectedRating, feedback: text, version: VERSION }),
+      body: JSON.stringify({
+        tester_name: name,
+        rating: _selectedRating,
+        feedback: text,
+        version: VERSION,
+        ...(chronicle !== undefined ? { chronicle } : {}),
+      }),
     });
     if (res.ok) {
       status.textContent = "Feedback sent. Thank you.";
@@ -236,6 +276,81 @@ async function submitFeedback(): Promise<void> {
     btn.disabled = false;
     btn.textContent = "Send";
   }
+}
+
+// ─── Chronicle export ─────────────────────────────────────────────────────────
+
+function initExportChronicle(): void {
+  document.getElementById("export-chronicle-btn")!.addEventListener("click", () => {
+    if (!_stateRef) return;
+    downloadChronicle(_stateRef);
+  });
+}
+
+// Serializes the in-memory log into a human-readable chronicle. Oldest year
+// first so the file reads as a narrative; in-game the log is newest-on-top.
+// Header carries the metadata you need to reconstruct the run shape.
+function serializeChronicle(state: GameState): string {
+  const lines: string[] = [];
+  lines.push("Isle of Cambrera — Chronicle");
+  lines.push(`Version: ${VERSION}`);
+  lines.push(`Year reached: ${state.year}`);
+  lines.push(`Status: ${state.gameOver ? "ENDED" : "in progress"}`);
+  lines.push(
+    `Population: ${totalPop(state)} (children ${childCount(state)} / fertile ${fertileCount(state)} / elders ${elderCount(state)})`,
+  );
+  lines.push(
+    `Resources: food ${state.food}, wood ${state.wood}, stone ${state.stone}, gold ${state.gold}, wool ${state.wool}`,
+  );
+  lines.push(`Morale: ${Math.round(state.morale)}`);
+  const d = state.departure;
+  lines.push(
+    `Departure: origin=${d.origin}, companion=${d.companion}, timing=${d.timing}, alarm=${d.alarm}, ship=${d.shipFate}, landing=${d.landingSpot}`,
+  );
+  lines.push("");
+
+  const oldestFirst = [...state.log].reverse();
+  let lastYear = Number.NEGATIVE_INFINITY;
+  for (const entry of oldestFirst) {
+    if (entry.year !== lastYear) {
+      if (lastYear !== Number.NEGATIVE_INFINITY) lines.push("");
+      lines.push(`— Year ${entry.year} —`);
+      lastYear = entry.year;
+    }
+    lines.push(entry.text);
+  }
+  return lines.join("\n");
+}
+
+function downloadChronicle(state: GameState): void {
+  const text = serializeChronicle(state);
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `cambrera-chronicle-year${state.year}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ─── Post-mortem feedback prompt ──────────────────────────────────────────────
+// Auto-opens the feedback modal the first time a save flips into game-over
+// state. The chronicle attach is pre-checked because the run is most useful to
+// us as a diagnostic. One-shot per save (gameOverFeedbackShown).
+
+export function maybeShowGameOverFeedback(state: GameState, onResolve: () => void): void {
+  if (!state.gameOver || state.gameOverFeedbackShown) return;
+  // Don't stack the modal on top of any other blocking overlay.
+  if (state.merchantVisit || state.pendingRefugees || state.pendingElderDecision || state.pendingChildDecision) {
+    return;
+  }
+  if (!document.getElementById("feedback-overlay")!.classList.contains("hidden")) return;
+  state.gameOverFeedbackShown = true;
+  saveGame(state);
+  showFeedbackModal({ gameOver: true, defaultIncludeChronicle: true });
+  onResolve();
 }
 
 // ─── Help modal ───────────────────────────────────────────────────────────────
@@ -455,6 +570,7 @@ export function attachCanvasClick(
 }
 
 export function renderUI(state: GameState, onAllocChange: () => void): void {
+  _stateRef = state;
   renderTopbar(state);
   renderAllocation(state, onAllocChange);
   renderLivestock(state, onAllocChange);

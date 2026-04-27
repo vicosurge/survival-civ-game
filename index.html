@@ -25,6 +25,7 @@
         <aside id="chronicle-panel">
           <div id="feedback-strip">
             <button id="help-btn-strip">How to Play</button>
+            <button id="export-chronicle-btn" title="Download your chronicle as a text file">Export Chronicle</button>
             <button id="feedback-btn">Leave Feedback</button>
           </div>
           <section id="log-section">
@@ -75,7 +76,7 @@
     <div id="feedback-overlay" class="hidden" aria-hidden="true">
       <div id="feedback-panel" role="dialog" aria-labelledby="feedback-title">
         <h2 id="feedback-title">Leave Feedback</h2>
-        <p class="feedback-intro">Help improve Isle of Cambrera. Takes about a minute.</p>
+        <p class="feedback-intro" id="fb-intro">Help improve Isle of Cambrera. Takes about a minute.</p>
         <div class="feedback-form">
           <label class="fb-label">Your name or handle
             <input type="text" id="fb-name" maxlength="80" autocomplete="off" placeholder="Anonymous" />
@@ -86,6 +87,10 @@
           <label class="fb-label">Feedback
             <textarea id="fb-text" maxlength="1000" rows="5" placeholder="What worked? What didn't? Anything that confused you?"></textarea>
             <span class="fb-char-count" id="fb-char-count">0 / 1000</span>
+          </label>
+          <label class="fb-include-chronicle">
+            <input type="checkbox" id="fb-include-chronicle" />
+            <span>Include my chronicle <span class="fb-hint" id="fb-chronicle-size"></span></span>
           </label>
           <div class="feedback-version">Version: <strong id="fb-version"></strong></div>
         </div>

@@ -155,6 +155,7 @@ export function newGame(departure: DepartureChoices): GameState {
       },
     ],
     gameOver: false,
+    gameOverFeedbackShown: false,
     selectedTile: null,
     fishingYears: 0,
   };

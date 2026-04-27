@@ -380,6 +380,7 @@ export interface GameState {
   departure: DepartureChoices;
   log: LogEntry[];
   gameOver: boolean;
+  gameOverFeedbackShown: boolean;  // one-shot: don't auto-prompt the post-mortem feedback modal twice
   selectedTile: { x: number; y: number } | null;
   fishingYears: number;
 }
@@ -640,4 +641,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v23";
+export const SAVE_KEY = "isle-of-cambrera-save-v24";

@@ -68,7 +68,9 @@ feedback-worker/      Cloudflare Worker — stores alpha tester feedback in D1
 
 ## Feedback system (alpha)
 
-Testers click **Leave Feedback** above the chronicle. Their name, 1–5 star rating, free text, and game version are sent to a Cloudflare Worker at `cambrera.digimente.xyz/feedback` and stored in a D1 database. The dashboard is at `/feedback/dashboard?key=<DASHBOARD_KEY>`.
+Testers click **Leave Feedback** above the chronicle. Their name, 1–5 star rating, free text, game version, and (optionally) the full chronicle of their run are sent to a Cloudflare Worker at `cambrera.digimente.xyz/feedback` and stored in a D1 database. The dashboard is at `/feedback/dashboard?key=<DASHBOARD_KEY>`.
+
+**Export Chronicle** sits next to the feedback button — testers can download their run as a plain-text file (`cambrera-chronicle-yearN.txt`, oldest year first, metadata header included). The same serializer powers the optional chronicle attach in feedback. When a settlement falls, the feedback modal auto-opens with the chronicle attach pre-checked, so post-mortems are one click away.
 
 **First-time setup** (inside `feedback-worker/`):
 
@@ -77,5 +79,13 @@ npm install
 wrangler d1 create cambrera-feedback          # paste the database_id into wrangler.toml
 wrangler d1 execute cambrera-feedback --file=schema.sql --remote
 wrangler secret put DASHBOARD_KEY             # pick a strong random string
+wrangler deploy
+```
+
+**Migrating an existing deployment to the chronicle column** — run once if the D1 instance was created before chronicle support:
+
+```bash
+wrangler d1 execute cambrera-feedback --remote \
+  --command "ALTER TABLE feedback ADD COLUMN chronicle TEXT"
 wrangler deploy
 ```

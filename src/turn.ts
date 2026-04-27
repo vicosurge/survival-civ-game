@@ -541,7 +541,7 @@ export function endYear(state: GameState): void {
     state.year += 1;
   }
 
-  if (state.log.length > 120) state.log.length = 120;
+  if (state.log.length > 2000) state.log.length = 2000;
 }
 
 interface PopTally {

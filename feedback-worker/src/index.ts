@@ -39,7 +39,7 @@ async function handleSubmit(request: Request, env: Env, cors: Record<string, str
     return jsonResp({ error: "Invalid body" }, 400, cors);
   }
 
-  const { tester_name, rating, feedback, version } = body as Record<string, unknown>;
+  const { tester_name, rating, feedback, version, chronicle } = body as Record<string, unknown>;
 
   if (typeof tester_name !== "string" || tester_name.trim().length < 1 || tester_name.trim().length > 80) {
     return jsonResp({ error: "tester_name must be 1–80 chars" }, 400, cors);
@@ -53,12 +53,24 @@ async function handleSubmit(request: Request, env: Env, cors: Record<string, str
   if (typeof version !== "string" || version.length < 1 || version.length > 20) {
     return jsonResp({ error: "version invalid" }, 400, cors);
   }
+  // Chronicle is optional. Hard cap at 512 KB — testers should never legitimately
+  // exceed this; the client trims to 256 KB before upload.
+  let chronicleValue: string | null = null;
+  if (chronicle !== undefined && chronicle !== null) {
+    if (typeof chronicle !== "string") {
+      return jsonResp({ error: "chronicle must be a string" }, 400, cors);
+    }
+    if (chronicle.length > 512 * 1024) {
+      return jsonResp({ error: "chronicle exceeds 512KB" }, 413, cors);
+    }
+    if (chronicle.length > 0) chronicleValue = chronicle;
+  }
 
   try {
     await env.DB.prepare(
-      "INSERT INTO feedback (submitted_at, tester_name, rating, feedback, version) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO feedback (submitted_at, tester_name, rating, feedback, version, chronicle) VALUES (?, ?, ?, ?, ?, ?)"
     )
-      .bind(new Date().toISOString(), tester_name.trim(), rating, feedback.trim(), version)
+      .bind(new Date().toISOString(), tester_name.trim(), rating, feedback.trim(), version, chronicleValue)
       .run();
   } catch {
     return jsonResp({ error: "Database error" }, 500, cors);
@@ -74,6 +86,7 @@ type FeedbackRow = {
   rating: number;
   feedback: string;
   version: string;
+  chronicle: string | null;
 };
 
 async function handleDashboard(request: Request, env: Env): Promise<Response> {
@@ -83,22 +96,25 @@ async function handleDashboard(request: Request, env: Env): Promise<Response> {
   }
 
   const { results } = await env.DB.prepare(
-    "SELECT id, submitted_at, tester_name, rating, feedback, version FROM feedback ORDER BY submitted_at DESC"
+    "SELECT id, submitted_at, tester_name, rating, feedback, version, chronicle FROM feedback ORDER BY submitted_at DESC"
   ).all<FeedbackRow>();
 
   const stars = (n: number) => "★".repeat(n) + "☆".repeat(5 - n);
   const rows = results
-    .map(
-      (r) =>
-        `<tr>
+    .map((r) => {
+      const chronicleCell = r.chronicle
+        ? `<details><summary style="cursor:pointer;color:#d4a94a">view (${(r.chronicle.length / 1024).toFixed(1)} KB)</summary><pre style="white-space:pre-wrap;background:#0f0b08;border:1px solid #4a3a28;padding:.6rem;margin:.4rem 0 0;max-height:420px;overflow:auto;font-size:.78rem">${escapeHtml(r.chronicle)}</pre></details>`
+        : '<span style="color:#6b5a3e">—</span>';
+      return `<tr>
       <td>${r.id}</td>
       <td style="white-space:nowrap">${r.submitted_at.replace("T", " ").slice(0, 19)}</td>
       <td>${escapeHtml(r.tester_name)}</td>
       <td style="color:#d4a94a;letter-spacing:0.1em">${stars(r.rating)}</td>
       <td style="max-width:420px;white-space:pre-wrap">${escapeHtml(r.feedback)}</td>
       <td>${escapeHtml(r.version)}</td>
-    </tr>`
-    )
+      <td style="max-width:280px">${chronicleCell}</td>
+    </tr>`;
+    })
     .join("");
 
   const avg =
@@ -120,8 +136,8 @@ tr:hover td{background:#2b2117}
 <h1>Isle of Cambrera — Feedback</h1>
 <div class="meta">${results.length} response${results.length !== 1 ? "s" : ""} &nbsp;·&nbsp; avg ${avg} / 5</div>
 <table>
-<thead><tr><th>#</th><th>Date (UTC)</th><th>Name</th><th>Rating</th><th>Feedback</th><th>Version</th></tr></thead>
-<tbody>${rows || '<tr><td colspan="6" style="color:#a89877;text-align:center;padding:1rem">No feedback yet.</td></tr>'}</tbody>
+<thead><tr><th>#</th><th>Date (UTC)</th><th>Name</th><th>Rating</th><th>Feedback</th><th>Version</th><th>Chronicle</th></tr></thead>
+<tbody>${rows || '<tr><td colspan="7" style="color:#a89877;text-align:center;padding:1rem">No feedback yet.</td></tr>'}</tbody>
 </table>
 </body></html>`;
 
