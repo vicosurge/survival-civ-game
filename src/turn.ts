@@ -37,6 +37,7 @@ import {
   CHICKEN_GROWTH_RATE,
   CHICKEN_SLAUGHTER_FOOD,
   CHICKEN_STARTING_FLOCK,
+  BONUS_BIRTH_CAP,
   CHILD_DECISION_TRIGGER,
   CHILD_WORK_FOOD_YIELD,
   CHILD_WORK_WOOD_YIELD,
@@ -54,6 +55,7 @@ import {
   HOUSE_COST,
   HOUSE_FOOD_YIELD,
   HUNTING_LODGE_HUNTER_BONUS,
+  IDLE_ADULT_BIRTH_CHANCE,
   Job,
   LogEntry,
   LONG_HOUSE_MORALE_BONUS,
@@ -475,15 +477,33 @@ export function endYear(state: GameState): void {
   //    built house (6 each); the cap is hard — babies aren't born without room.
   //    Newcomers/refugees arrive regardless, so pop can exceed cap; only births
   //    are gated.
-  if (
+  const growthGatesMet =
     totalPop(state) > 0 &&
     totalPop(state) < popCapacity(state) &&
     state.food >= totalPop(state) * 3 &&
-    state.morale >= MORALE_GROWTH_GATE
-  ) {
+    state.morale >= MORALE_GROWTH_GATE;
+  if (growthGatesMet) {
     state.pops.push(makeBabyPop());
     applyMorale(state, 2);
     tally.births += 1;
+  }
+
+  // Idle-adult birth bonus — prosperity multiplier on top of the standard
+  // rule. Each idle adult independently rolls; total capped. Same gates as
+  // the standard birth (re-checked because the standard rule may have just
+  // pushed pop to the cap or eaten the food reserve isn't an issue here, but
+  // morale + cap can shift mid-step).
+  const idleAdults = idleCount(state);
+  if (growthGatesMet && idleAdults > 0 && totalPop(state) < popCapacity(state)) {
+    let bonus = 0;
+    for (let i = 0; i < idleAdults && bonus < BONUS_BIRTH_CAP; i++) {
+      if (Math.random() < IDLE_ADULT_BIRTH_CHANCE) bonus += 1;
+    }
+    for (let i = 0; i < bonus && totalPop(state) < popCapacity(state); i++) {
+      state.pops.push(makeBabyPop());
+      applyMorale(state, 2);
+      tally.births += 1;
+    }
   }
 
   // Combined population tally — one chronicle line for the quiet turning of

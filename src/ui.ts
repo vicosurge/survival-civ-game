@@ -1,3 +1,4 @@
+import { HELP_SECTIONS } from "./help";
 import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReach, totalReachableCapacity } from "./map";
 import { JOB_TOOLTIPS } from "./narratives";
 import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, sheepHerdTotal, totalPop } from "./state";
@@ -107,6 +108,8 @@ export function initUI(handlers: UIHandlers): void {
   renderStaticCredits();
   initIntroHandlers();
   initFeedbackModal();
+  initHelpHandlers();
+  initMusicHandlers();
 }
 
 function renderStaticCredits(): void {
@@ -127,6 +130,7 @@ function initIntroHandlers(): void {
   });
   beginBtn.addEventListener("click", () => {
     hideIntro();
+    startBackgroundMusic();
     _onIntroBegin();
   });
 }
@@ -232,6 +236,87 @@ async function submitFeedback(): Promise<void> {
     btn.disabled = false;
     btn.textContent = "Send";
   }
+}
+
+// ─── Help modal ───────────────────────────────────────────────────────────────
+
+function initHelpHandlers(): void {
+  document.getElementById("help-btn-topbar")!.addEventListener("click", showHelpModal);
+  document.getElementById("help-btn-strip")!.addEventListener("click", showHelpModal);
+}
+
+function showHelpModal(): void {
+  const overlay = document.getElementById("help-overlay")!;
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+
+  const sectionsHtml = HELP_SECTIONS.map((s, i) => `
+    <details class="help-section"${i === 0 ? " open" : ""}>
+      <summary>${s.title}</summary>
+      <div class="help-body">${s.body}</div>
+    </details>
+  `).join("");
+
+  overlay.innerHTML = `
+    <div id="help-panel" role="dialog" aria-label="Help">
+      <h2>Isle of Cambrera — Reference</h2>
+      <p class="help-intro">Skim the section that matches the question you have. Click a heading to expand or collapse.</p>
+      <div class="help-sections">${sectionsHtml}</div>
+      <div class="help-buttons">
+        <button class="help-close">Close</button>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector<HTMLButtonElement>(".help-close")!.addEventListener("click", () => {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+  });
+}
+
+// ─── Background music ─────────────────────────────────────────────────────────
+// HTML5 audio element does the loop. Mute preference persists in localStorage.
+// Browsers block autoplay until the user interacts with the page — the intro
+// "Begin" handler triggers the first play() call from within a click event,
+// which satisfies the autoplay policy.
+
+const MUSIC_MUTED_KEY = "isle-of-cambrera-music-muted";
+
+function isMusicMuted(): boolean {
+  return localStorage.getItem(MUSIC_MUTED_KEY) === "1";
+}
+
+function initMusicHandlers(): void {
+  const audio = document.getElementById("bg-music") as HTMLAudioElement;
+  audio.volume = 0.2;
+  audio.muted = isMusicMuted();
+  updateMusicToggleLabel();
+  document.getElementById("music-toggle")!.addEventListener("click", () => {
+    const muted = !audio.muted;
+    audio.muted = muted;
+    if (muted) localStorage.setItem(MUSIC_MUTED_KEY, "1");
+    else localStorage.removeItem(MUSIC_MUTED_KEY);
+    updateMusicToggleLabel();
+    // If the user un-mutes before the first user-gesture-triggered play(),
+    // try to start now — they're un-muting via a click, which counts.
+    if (!muted && audio.paused) audio.play().catch(() => { /* autoplay blocked, will retry on Begin */ });
+  });
+}
+
+function updateMusicToggleLabel(): void {
+  const audio = document.getElementById("bg-music") as HTMLAudioElement;
+  const btn = document.getElementById("music-toggle")!;
+  btn.textContent = audio.muted ? "♪" : "♫";
+  btn.title = audio.muted ? "Music muted — click to unmute" : "Music on — click to mute";
+}
+
+// Called from the intro Begin handler. The click satisfies browser autoplay
+// policies. If the music file isn't present yet, this fails silently.
+export function startBackgroundMusic(): void {
+  const audio = document.getElementById("bg-music") as HTMLAudioElement;
+  if (!audio || isMusicMuted()) return;
+  audio.play().catch(() => { /* file missing or blocked — silent */ });
 }
 
 export function maybeShowIntro(onBegin: () => void): void {

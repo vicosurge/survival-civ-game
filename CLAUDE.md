@@ -66,6 +66,8 @@ Why these numbers: fertility window is 14–35 (21 years), mean lifespan ≈ 45.
 
 **Growth gate** — a baby is born at end-of-year if *all* of: `pop > 0`, `pop < popCapacity(state)`, `food >= pop × 3`, `morale >= 50`. `popCapacity = INITIAL_HUT_CAPACITY (20) + houses × HOUSE_CAPACITY (6)`. The cap is hard; newcomers/refugees bypass it (you can't turn refugees away) but births don't.
 
+**Idle-adult birth bonus** — fires *after* the standard rule, gated by the same conditions. Each idle adult independently rolls `IDLE_ADULT_BIRTH_CHANCE = 0.05` for an extra birth that year; total capped at `BONUS_BIRTH_CAP = 1`. Probabilistic on purpose — the design conversation explicitly rejected integer-floor formulations (verified in `sim/birth_death_curve.py`: integer floor rounds to zero at small idle counts and contributes nothing). Prosperity multiplier, not a rescue. **Don't change to integer formulation** without re-running the sim.
+
 **Elder decision (`state.pendingElderDecision`):** Fires the first time `state.elderTransitions >= ELDER_DECISION_TRIGGER = 5` (5 pops have crossed into elder). Blocks end-year like merchant/refugee modals. Two choices:
 - **working**: elders contribute `ELDER_WORK_FOOD_YIELD = 0.5` food/elder/year (applied step 1); `MORALE_ELDER_WORK_CHOICE = -3` one-time hit.
 - **respected**: elders don't labour; `MORALE_ELDER_RESPECTED_CHOICE = +5` one-time. Modal in `#elder-overlay`. Resolve via `acceptElderWork` / `respectElders` in turn.ts.
@@ -374,7 +376,8 @@ Six-step pre-game wizard. `state.departure: DepartureChoices` persists the picks
 
 ```
 index.html          Topbar, canvas, sidebar (allocator / tile info / log / buttons),
-                    intro overlay, departure wizard, trade modal.
+                    intro overlay, departure wizard, trade modal, help overlay,
+                    background music <audio> element.
 src/main.ts         Entry. Loads save or newGame, wires click handler, calls redraw().
 src/types.ts        All shared types + tuning constants. Tune numbers here first.
                     VERSION + AUTHOR live here too.
@@ -390,14 +393,27 @@ src/events.ts       EventDef table + weighted roll. adjustedWeight applies moral
 src/turn.ts         endYear() is the turn pipeline. assignWorker / unassignWorker
                     handle state transitions. reconcileAllocation after famine/events.
                     Trade basket API; fishingLossReduction / effectiveCrewLossChance.
+                    Town-upgrade build API; civic decision handlers; isBuildingHidden.
 src/render.ts       Canvas renderer. baseColor per terrain × state. Decor layers
                     for cultivating/worked/fallow/exhausted; river shimmer; foam
                     flecks for fish-rich water; road crosshatch over everything.
 src/ui.ts           DOM overlay. renderUI() rebuilds topbar/allocator/tile info/log.
-                    Intro + departure wizard + trade basket overlays.
-                    renderStaticCredits sets version chip + byline.
+                    Intro + departure wizard + trade basket + governance overlays.
+                    Help modal renderer (sections from src/help.ts), music handlers
+                    (mute persisted in localStorage). renderStaticCredits sets
+                    version chip + byline.
+src/help.ts         HELP_SECTIONS data — content for the Help modal. Edit prose here
+                    without touching ui.ts. **Update when mechanics change** —
+                    out-of-date help is worse than no help.
+src/narratives.ts   Chronicle prose (unlock lines, town upgrade lines, civic flips,
+                    job tooltips). Keep prose out of turn.ts so non-dev editors
+                    can tune voice without touching game logic.
 src/style.css       Retro palette: muted browns, gold accents, monospace font.
+public/music/       Background music files (served at /music/* by Vite without
+                    bundling). Currently: gemini_iron_under_snow.mp3 (~1 min loop).
 ```
+
+**The help text is part of the contract with players.** Whenever you change a mechanic in turn.ts/types.ts/state.ts, also update the matching section in `src/help.ts`. If you don't know which section, search for the constant or term being changed — it's almost certainly described in one of the sections.
 
 ## Key design decisions (and why)
 

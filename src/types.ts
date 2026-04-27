@@ -555,6 +555,18 @@ export const MORALE_START = 80;
 export const MORALE_GROWTH_GATE = 50;       // births only fire at or above this
 export const MORALE_ATTRACT_THRESHOLD = 80; // at/above, newcomers event weight ×2
 export const MORALE_PREY_THRESHOLD = 30;    // at/below, bandits event weight ×2
+
+// Idle-adult birth bonus — a prosperity multiplier on top of the standard
+// +1-baby-per-year rule. Each idle adult independently rolls for an extra
+// birth that year; total bonus capped at BONUS_BIRTH_CAP. Probabilistic
+// because integer floors round to zero at small idle counts and contribute
+// nothing (verified in sim before locking in the design).
+//
+// Example: 5 idle adults ≈ 23% bonus chance, 10 ≈ 40%, 20 ≈ 64%.
+// Same gates as the standard rule (food ≥ pop × 3, morale ≥ growth gate,
+// pop < cap) — prosperous settlements grow faster, struggling ones don't.
+export const IDLE_ADULT_BIRTH_CHANCE = 0.05;
+export const BONUS_BIRTH_CAP = 1;
 export const MORALE_OLD_AGE_DEATH = 2;      // per elder passing of old age
 export const MORALE_FOUNDER_EXTRA = 3;      // extra penalty per founder death (stacks with base)
 export const MORALE_REFUGEE_ACCEPT = 4;     // morale on welcoming refugees

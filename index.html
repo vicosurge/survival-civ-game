@@ -15,11 +15,16 @@
         </div>
         <div id="year-display">Year 1</div>
         <div id="resources"></div>
+        <div id="topbar-controls">
+          <button id="help-btn-topbar" title="Help / Reference">?</button>
+          <button id="music-toggle" title="Music">♫</button>
+        </div>
       </header>
 
       <main id="main">
         <aside id="chronicle-panel">
           <div id="feedback-strip">
+            <button id="help-btn-strip">How to Play</button>
             <button id="feedback-btn">Leave Feedback</button>
           </div>
           <section id="log-section">
@@ -97,6 +102,8 @@
     <div id="elder-overlay" class="hidden" aria-hidden="true"></div>
     <div id="child-overlay" class="hidden" aria-hidden="true"></div>
     <div id="governance-overlay" class="hidden" aria-hidden="true"></div>
+    <div id="help-overlay" class="hidden" aria-hidden="true"></div>
+    <audio id="bg-music" loop preload="auto" src="/music/gemini_iron_under_snow.mp3"></audio>
     <div id="intro-overlay" class="hidden" aria-hidden="true">
       <div id="intro-papyrus" role="dialog" aria-labelledby="intro-title">
         <h2 id="intro-title">Cambrera</h2>
