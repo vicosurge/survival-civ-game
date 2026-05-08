@@ -11,7 +11,6 @@ const TERRAIN_COLORS: Record<Terrain, string> = {
 };
 
 const FARMLAND_COLOR = "#7a5a2a";
-const PASTURE_COLOR  = "#4a6830";   // shepherd grass — greener than turned farmland
 const LOGGING_COLOR = "#3a3020";
 const QUARRY_COLOR = "#5a5248";
 const EXHAUSTED_FOREST = "#4a3820";
@@ -87,7 +86,8 @@ function drawTile(
 
   if (tile.state === "cultivating") drawScaffolding(ctx, px, py);
   if (tile.state === "fallow") drawWeeds(ctx, px, py);
-  if (tile.road) drawRoadOverlay(ctx, px, py);
+  if (tile.roadType === "dirt") drawDirtPathOverlay(ctx, px, py);
+  if (tile.roadType === "stone") drawStoneRoadOverlay(ctx, px, py);
 
   // Subtle right/bottom edge darkening.
   ctx.fillStyle = "rgba(0,0,0,0.15)";
@@ -97,7 +97,7 @@ function drawTile(
 
 function baseColor(tile: Tile): string {
   if (tile.state === "worked" || tile.state === "fallow") {
-    if (tile.terrain === "grass") return tile.shepherdWorkers > 0 ? PASTURE_COLOR : FARMLAND_COLOR;
+    if (tile.terrain === "grass") return FARMLAND_COLOR;
     if (tile.terrain === "forest") return LOGGING_COLOR;
     if (tile.terrain === "stone") return QUARRY_COLOR;
   }
@@ -139,10 +139,7 @@ function drawRichWaterMark(ctx: CanvasRenderingContext2D, px: number, py: number
 
 function drawWorkedDecor(ctx: CanvasRenderingContext2D, px: number, py: number, tile: Tile): void {
   switch (tile.terrain) {
-    case "grass":
-      if (tile.shepherdWorkers > 0) drawPastureDecor(ctx, px, py);
-      else drawFarmRows(ctx, px, py);
-      break;
+    case "grass": drawFarmRows(ctx, px, py); break;
     case "forest": drawLoggingCamp(ctx, px, py); break;
     case "stone": drawQuarryTerraces(ctx, px, py); break;
     case "beach": drawFishingBoat(ctx, px, py); break;
@@ -178,28 +175,6 @@ function drawFarmRows(ctx: CanvasRenderingContext2D, px: number, py: number): vo
   for (let i = 0; i < 4; i++) {
     ctx.fillRect(px + 3, py + 5 + i * 7, TILE_SIZE - 6, 1);
   }
-}
-
-function drawPastureDecor(ctx: CanvasRenderingContext2D, px: number, py: number): void {
-  // Low grass tufts suggesting a grazed meadow.
-  ctx.fillStyle = "rgba(180,210,120,0.35)";
-  for (let i = 0; i < 5; i++) {
-    const gx = px + 4 + i * 6;
-    ctx.fillRect(gx, py + 8,  1, 4);
-    ctx.fillRect(gx + 1, py + 7, 1, 3);
-    ctx.fillRect(gx, py + 20, 1, 4);
-    ctx.fillRect(gx + 1, py + 21, 1, 3);
-  }
-  // Tiny white sheep blobs — two of them.
-  ctx.fillStyle = "rgba(240,240,230,0.85)";
-  ctx.fillRect(px + 7,  py + 13, 5, 3);
-  ctx.fillRect(px + 6,  py + 14, 7, 2);
-  ctx.fillRect(px + 20, py + 10, 5, 3);
-  ctx.fillRect(px + 19, py + 11, 7, 2);
-  // Tiny dark heads.
-  ctx.fillStyle = "rgba(60,40,20,0.8)";
-  ctx.fillRect(px + 12, py + 13, 2, 2);
-  ctx.fillRect(px + 25, py + 10, 2, 2);
 }
 
 function drawLoggingCamp(ctx: CanvasRenderingContext2D, px: number, py: number): void {
@@ -368,15 +343,23 @@ function drawTown(ctx: CanvasRenderingContext2D, px: number, py: number): void {
   ctx.fillRect(px + 15, py + 4, 5, 3);
 }
 
-function drawRoadOverlay(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+function drawDirtPathOverlay(ctx: CanvasRenderingContext2D, px: number, py: number): void {
   const mid = TILE_SIZE / 2;
-  // Packed-earth path: a horizontal and vertical band through the tile centre.
+  ctx.fillStyle = "rgba(150,120,80,0.45)";
+  ctx.fillRect(px, py + mid - 2, TILE_SIZE, 4);
+  ctx.fillRect(px + mid - 2, py, 4, TILE_SIZE);
+}
+
+function drawStoneRoadOverlay(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+  const mid = TILE_SIZE / 2;
   ctx.fillStyle = "rgba(180,150,100,0.55)";
   ctx.fillRect(px, py + mid - 3, TILE_SIZE, 6);
   ctx.fillRect(px + mid - 3, py, 6, TILE_SIZE);
-  // Worn centre stone.
-  ctx.fillStyle = "rgba(210,185,140,0.7)";
-  ctx.fillRect(px + mid - 2, py + mid - 2, 4, 4);
+  ctx.fillStyle = "rgba(210,185,140,0.85)";
+  for (let i = 0; i < TILE_SIZE; i += 4) {
+    ctx.fillRect(px + i + 1, py + mid - 2, 2, 4);
+    ctx.fillRect(px + mid - 2, py + i + 1, 4, 2);
+  }
 }
 
 function drawSelection(ctx: CanvasRenderingContext2D, px: number, py: number): void {

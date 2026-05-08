@@ -1,15 +1,14 @@
-export const VERSION = "v0.7";
+export const VERSION = "v0.7.5";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
 
-export type Job = "farmer" | "shepherd" | "woodcutter" | "quarryman" | "hunter" | "fisher" | "scout";
+export type Job = "farmer" | "woodcutter" | "quarryman" | "hunter" | "fisher" | "scout";
 
-export const JOBS: Job[] = ["farmer", "shepherd", "hunter", "fisher", "woodcutter", "quarryman", "scout"];
+export const JOBS: Job[] = ["farmer", "hunter", "fisher", "woodcutter", "quarryman", "scout"];
 
 export const JOB_LABEL: Record<Job, string> = {
   farmer: "Farmer",
-  shepherd: "Shepherd",
   woodcutter: "Woodcutter",
   quarryman: "Quarryman",
   hunter: "Hunter",
@@ -29,12 +28,13 @@ export type TileState = "wild" | "cultivating" | "worked" | "fallow" | "exhauste
 // Woodcutter and hunter both work forest and can coexist on the same tile.
 export const JOB_TERRAINS: Record<Exclude<Job, "scout">, Terrain[]> = {
   farmer: ["grass"],
-  shepherd: ["grass"],
   woodcutter: ["forest"],
   quarryman: ["stone"],
   hunter: ["forest"],
   fisher: ["beach", "river"],
 };
+
+export type RoadType = "none" | "dirt" | "stone";
 
 export interface Tile {
   terrain: Terrain;
@@ -43,14 +43,12 @@ export interface Tile {
   capacity: number;          // max workers this tile can hold; 0 for non-workable terrain
   workers: number;           // currently assigned workers (0..capacity)
   hunterWorkers: number;     // forest only: subset that are hunters; woodcutters = workers - hunterWorkers
-  shepherdWorkers: number;   // grass only: subset that are shepherds; farmers and shepherds are exclusive on a tile
   gameExhausted: boolean;    // forest only: game reserve depleted — hunter slot permanently closed
   reserve: number;           // remaining resource units (forest game / quarry stone)
-  sheepHerd: number;         // grass shepherd tiles: current herd size; persists if shepherd is temporarily removed
   fertility: number;         // grass only: +0 normal, +1 fertile — adds to per-worker farmer yield
   fishRichness: number;      // beach/river only: +0 normal (1–3 food), +1 rich (2–4, crab/tuna)
   yearsInState: number;      // how long in current state — drives cultivating→worked and fallow→wild
-  road: boolean;             // a road has been built here — acts as a reach anchor like a worked tile
+  roadType: RoadType;        // dirt path = +1 reach anchor (cheap, ungated); stone road = +2 reach (Long House gated)
 }
 
 export interface LogEntry {
@@ -88,9 +86,9 @@ export interface ScriptedWave {
 }
 
 export type TradeAction = "sell" | "buy";
-export type TradeResource = "food" | "wood" | "stone" | "wool";
+export type TradeResource = "food" | "wood" | "stone";
 
-export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "long_house" | "shrine_of_anata" | "chicken_coop";
+export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "lumber_camp" | "mason_workshop" | "long_house" | "shrine_of_anata" | "chicken_coop";
 
 // Town-centre upgrades — repeatable infrastructure layer that lives outside the
 // one-time BUILDINGS table. The Communal Garden + Workshop Yard are tier-1
@@ -152,13 +150,25 @@ export const ANATA_FOUNDER_EXTRA = 2;      // founder extra while shrine exists 
 // Houses — repeatable post-Long-House building. Pop is hard-capped until a new
 // house is built. Each house also yields a small steady food income from a
 // private garden plot (Ostriv-inspired; future taxation hook lives here).
+// Cost escalates per existing house — building house N costs base + N×increment.
+// Stops the late-game pattern of grinding wood for an unbounded number of cheap
+// huts; players have to feel the next house before they get it.
 export const INITIAL_HUT_CAPACITY = 25;   // starter huts accommodate this many before crowding bites
 export const HOUSE_CAPACITY = 6;          // each new house adds this many to pop capacity
 export const HOUSE_FOOD_YIELD = 2;        // food/year from each house's garden plot
-export const HOUSE_COST = { wood: 8, stone: 3 };
+export const HOUSE_COST_BASE = { wood: 8, stone: 3 };
+export const HOUSE_COST_INCREMENT = { wood: 2, stone: 1 };
 
-// Road construction cost per tile. Requires Long House + tile in reach.
-export const ROAD_COST = { wood: 2, stone: 5 };
+// Road tiers — both extend reach but at different distances and costs.
+// Dirt path: cheap, available from turn 1. Acts as a +1 reach anchor (same as a
+// worked tile). Designed to solve the "stone tile out of reach before Long
+// House" early-game lock — players can lay paths to outlying stone.
+// Stone road: Long House gated, more expensive. Acts as a +2 reach anchor —
+// stone roads are highways that pull distant tiles into your territory.
+export const DIRT_PATH_COST = { wood: 3, stone: 0 };
+export const STONE_ROAD_COST = { wood: 2, stone: 5 };
+export const DIRT_PATH_REACH = 1;
+export const STONE_ROAD_REACH = 2;
 
 export interface BuildingDef {
   id: BuildingId;
@@ -353,7 +363,6 @@ export interface GameState {
   wood: number;
   stone: number;
   gold: number;
-  wool: number;          // accumulated wool from shepherd tiles; sold to merchants
   morale: number;        // 0–100; lagging indicator of settlement health
   tiles: Tile[][];
   town: { x: number; y: number };
@@ -362,6 +371,7 @@ export interface GameState {
   scriptedWaves: ScriptedWave[];
   merchantVisit: MerchantVisit | null;  // pending merchant visit; blocks end-year
   pendingRefugees: { count: number; text: string; year: number } | null;
+  pendingAnataSacrifice: boolean;  // priests have asked for an offering to Anata; blocks end-year
   elderTransitions: number;     // lifetime count of adult→elder crossings
   elderPolicy: "working" | "respected" | null;  // null = decision not yet made
   pendingElderDecision: boolean;  // true while waiting for player to decide
@@ -371,8 +381,6 @@ export interface GameState {
   unlockedBuildings: Record<BuildingId, boolean>;  // dedup flag for per-building unlock chronicle lines
   townUpgrades: Record<TownUpgradeId, boolean>;
   houses: number;
-  sheepSlaughter: number;             // standing order: sheep to cull per year across all shepherd tiles
-  sheepSlaughterNotified: boolean;    // one-shot: player told about the slaughter mechanic
   chickens: number;                   // current flock size (0 when coop not yet built)
   chickenCapacity: number;            // hard flock cap; excess auto-culled each year
   chickenSacrificeNotified: boolean;  // one-shot: player told about auto-culling
@@ -414,7 +422,6 @@ export const FOOD_PER_CHILD = 1;
 // of the rolled range — actual per-year yield is randomised (see FISHER_YIELD_*).
 export const YIELD_PER_WORKER: Record<Exclude<Job, "scout">, number> = {
   farmer: 2,
-  shepherd: 1,  // milk food only; wool tracked separately via SHEPHERD_WOOL_YIELD
   woodcutter: 2,
   quarryman: 1,
   hunter: 3,
@@ -433,6 +440,15 @@ export const GRANARY_FARMER_BONUS = 0.5;
 // Extra food per hunter when the hunting lodge is built. Same 0.5 shape as the
 // granary bonus. The lodge is a trap — the wood is sunk once forests exhaust.
 export const HUNTING_LODGE_HUNTER_BONUS = 0.5;
+
+// Extra wood per woodcutter when the Lumber Camp is built. Mirrors the Granary
+// shape (+0.5 floored). Settlement-wide multiplier on baseline timber output.
+export const LUMBER_CAMP_WOODCUTTER_BONUS = 0.5;
+
+// Extra stone per quarryman when the Mason's Workshop is built. Mirrors the
+// Granary shape. Stone is the bottleneck resource on most maps; this lifts the
+// ceiling without removing finite reserves.
+export const MASON_WORKSHOP_QUARRYMAN_BONUS = 0.5;
 
 export const SCOUT_REVEAL_PER_YEAR = 2;
 
@@ -509,10 +525,9 @@ export const SCRIPTED_WAVE_MIN_GAP = 3;
 export const SCRIPTED_WAVE_REFUGEES = 2;
 
 // Merchant trade rates — asymmetric so there's a real choice.
-// Wool is a sell-only commodity (merchants don't bring fleece to a sheep settlement).
 export const TRADE_RATES: Record<TradeAction, Record<TradeResource, number>> = {
-  sell: { food: 1, wood: 1, stone: 2, wool: 2 },
-  buy:  { food: 2, wood: 2, stone: 4, wool: 4 },
+  sell: { food: 1, wood: 1, stone: 2 },
+  buy:  { food: 2, wood: 2, stone: 4 },
 };
 
 // Patrician cargo model: merchants arrive with a wagon of capacity MERCHANT_CARGO_RANGE
@@ -525,21 +540,21 @@ export type TradeBasket = Record<TradeAction, Record<TradeResource, number>>;
 
 export function emptyBasket(): TradeBasket {
   return {
-    sell: { food: 0, wood: 0, stone: 0, wool: 0 },
-    buy:  { food: 0, wood: 0, stone: 0, wool: 0 },
+    sell: { food: 0, wood: 0, stone: 0 },
+    buy:  { food: 0, wood: 0, stone: 0 },
   };
 }
 
 export function basketTotal(basket: TradeBasket): number {
   return (
-    basket.sell.food + basket.sell.wood + basket.sell.stone + basket.sell.wool
-    + basket.buy.food + basket.buy.wood + basket.buy.stone + basket.buy.wool
+    basket.sell.food + basket.sell.wood + basket.sell.stone
+    + basket.buy.food + basket.buy.wood + basket.buy.stone
   );
 }
 
 export function basketGoldDelta(basket: TradeBasket): number {
   let delta = 0;
-  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
+  const resources: TradeResource[] = ["food", "wood", "stone"];
   for (const r of resources) {
     delta += basket.sell[r] * TRADE_RATES.sell[r];
     delta -= basket.buy[r]  * TRADE_RATES.buy[r];
@@ -573,16 +588,23 @@ export const MORALE_FOUNDER_EXTRA = 3;      // extra penalty per founder death (
 export const MORALE_REFUGEE_ACCEPT = 4;     // morale on welcoming refugees
 export const MORALE_REFUGEE_REJECT = -3;    // morale on turning refugees away
 
-// ─── Shepherd / sheep ranching ────────────────────────────────────────────────
-// Shepherd job works grass tiles exclusively — farmers and shepherds can't share
-// a tile. The tile's sheepHerd persists even if the shepherd is temporarily
-// removed, so pulling a shepherd doesn't scatter the flock.
-export const SHEPHERD_FOOD_YIELD = 1;       // milk food per shepherd per year
-export const SHEPHERD_WOOL_YIELD = 1;       // wool per shepherd per year
-export const SHEEP_STARTING_HERD = 3;       // herd size when the first shepherd claims a tile
-export const SHEEP_GROWTH_PER_YEAR = 2;     // sheep added per shepherd tile per year (flat, not %)
-export const SHEEP_HERD_CAP_PER_TILE = 12;  // herd never exceeds this per tile
-export const SHEEP_FOOD_PER_SLAUGHTER = 2;  // food per sheep culled from the standing order
+// ─── Bandits (Exarum stragglers) ──────────────────────────────────────────────
+// Reflavored from "highland raiders" to desperate refugees from the Exarum war
+// who turned to theft rather than join the settlement. They steal food, not
+// lives — a smaller, recoverable shock that erodes surplus rather than the
+// settlement itself. Palisade still blocks the event entirely.
+export const BANDIT_THEFT_RANGE: [number, number] = [5, 15];   // food stolen, rolled per raid (capped at current stores)
+export const MORALE_BANDIT_THEFT = -3;          // morale cost when food is taken
+export const MORALE_BANDIT_EMPTY = -2;          // morale cost when stores were already empty (still demoralising)
+
+// ─── Anata sacrifice (food sink event) ────────────────────────────────────────
+// Fires only when the Shrine of Anata is built. The priests ask for a great
+// offering. Accepting drains food but lifts spirits; declining costs morale.
+// Pause-style event: writes to state.pendingAnataSacrifice and blocks End Year
+// until the player decides.
+export const ANATA_SACRIFICE_FOOD_COST = 15;
+export const ANATA_SACRIFICE_MORALE_GAIN = 5;
+export const ANATA_SACRIFICE_DECLINE_MORALE = -3;
 
 // ─── Chicken coop ─────────────────────────────────────────────────────────────
 // Settlement-level mechanic — not tile-based. The coop initialises a flock that
@@ -621,6 +643,18 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     description: "Drying racks, stretched hides, a pit for rendering fat. Each hunter yields +0.5 food/year — while the forest lasts.",
     cost: { wood: 10 },
   },
+  lumber_camp: {
+    id: "lumber_camp",
+    name: "Lumber Camp",
+    description: "Saw pits, drying stacks, a felling road into the trees. Each woodcutter yields +0.5 wood/year.",
+    cost: { wood: 10, stone: 10 },
+  },
+  mason_workshop: {
+    id: "mason_workshop",
+    name: "Mason's Workshop",
+    description: "Chisels, splitting wedges, a yard for dressing stone. Each quarryman yields +0.5 stone/year — while the seam lasts.",
+    cost: { wood: 15, stone: 10 },
+  },
   long_house: {
     id: "long_house",
     name: "Long House",
@@ -641,4 +675,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v24";
+export const SAVE_KEY = "isle-of-cambrera-save-v25";

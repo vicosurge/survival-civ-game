@@ -1,8 +1,9 @@
 import { HELP_SECTIONS } from "./help";
 import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReach, totalReachableCapacity } from "./map";
 import { JOB_TOOLTIPS } from "./narratives";
-import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, saveGame, sheepHerdTotal, totalPop } from "./state";
+import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, saveGame, totalPop } from "./state";
 import {
+  acceptAnataSacrifice,
   acceptElderWork,
   acceptRefugees,
   assignWorker,
@@ -14,6 +15,7 @@ import {
   canBuildRoad,
   canDispatchBoat,
   canExecuteTradeBasket,
+  declineAnataSacrifice,
   declineTrade,
   declineRefugees,
   dispatchBoat,
@@ -22,6 +24,7 @@ import {
   fishingLossReduction,
   houseBlockerReason,
   isBuildingHidden,
+  nextHouseCost,
   respectElders,
   setChildrenFree,
   setChildrenWorking,
@@ -33,6 +36,9 @@ import {
 import {
   ALARM_RESPONSES,
   AlarmResponseId,
+  ANATA_SACRIFICE_DECLINE_MORALE,
+  ANATA_SACRIFICE_FOOD_COST,
+  ANATA_SACRIFICE_MORALE_GAIN,
   AUTHOR,
   BOAT_CREW_SIZE,
   BUILDINGS,
@@ -46,10 +52,10 @@ import {
   DEPARTURE_TIMINGS,
   DepartureChoices,
   DepartureTimingId,
+  DIRT_PATH_COST,
   FOOD_PER_ADULT,
   GameState,
   HOUSE_CAPACITY,
-  HOUSE_COST,
   HOUSE_FOOD_YIELD,
   Job,
   JOBS,
@@ -68,9 +74,7 @@ import {
   MORALE_REFUGEE_REJECT,
   ORIGINS,
   OriginId,
-  ROAD_COST,
-  SHEEP_FOOD_PER_SLAUGHTER,
-  SHEEP_HERD_CAP_PER_TILE,
+  STONE_ROAD_COST,
   SHIP_FATES,
   ShipFateId,
   Tile,
@@ -300,7 +304,7 @@ function serializeChronicle(state: GameState): string {
     `Population: ${totalPop(state)} (children ${childCount(state)} / fertile ${fertileCount(state)} / elders ${elderCount(state)})`,
   );
   lines.push(
-    `Resources: food ${state.food}, wood ${state.wood}, stone ${state.stone}, gold ${state.gold}, wool ${state.wool}`,
+    `Resources: food ${state.food}, wood ${state.wood}, stone ${state.stone}, gold ${state.gold}`,
   );
   lines.push(`Morale: ${Math.round(state.morale)}`);
   const d = state.departure;
@@ -343,7 +347,7 @@ function downloadChronicle(state: GameState): void {
 export function maybeShowGameOverFeedback(state: GameState, onResolve: () => void): void {
   if (!state.gameOver || state.gameOverFeedbackShown) return;
   // Don't stack the modal on top of any other blocking overlay.
-  if (state.merchantVisit || state.pendingRefugees || state.pendingElderDecision || state.pendingChildDecision) {
+  if (state.merchantVisit || state.pendingRefugees || state.pendingElderDecision || state.pendingChildDecision || state.pendingAnataSacrifice) {
     return;
   }
   if (!document.getElementById("feedback-overlay")!.classList.contains("hidden")) return;
@@ -584,7 +588,8 @@ export function renderUI(state: GameState, onAllocChange: () => void): void {
     || state.merchantVisit !== null
     || !!state.pendingRefugees
     || state.pendingElderDecision
-    || state.pendingChildDecision;
+    || state.pendingChildDecision
+    || state.pendingAnataSacrifice;
   endBtn.textContent = state.gameOver
     ? "— Settlement Failed —"
     : state.merchantVisit !== null
@@ -595,7 +600,9 @@ export function renderUI(state: GameState, onAllocChange: () => void): void {
           ? "Council awaiting…"
           : state.pendingChildDecision
             ? "Council awaiting…"
-            : "End Year";
+            : state.pendingAnataSacrifice
+              ? "Priests at the shrine…"
+              : "End Year";
 }
 
 export function maybeShowTradeModal(state: GameState, onResolve: () => void): void {
@@ -624,12 +631,12 @@ function showTradeModal(state: GameState, onResolve: () => void): void {
     const visit = state.merchantVisit!;
     const next = basket[kind][res] + delta;
     if (next < 0) return;
-    const held = res === "wool" ? state.wool : (state as unknown as Record<string, number>)[res] as number;
+    const held = (state as unknown as Record<string, number>)[res] as number;
     if (kind === "sell" && next > held) return;
     if (kind === "buy" && next > visit.sellStock[res]) return;
     // Patrician cargo constraint: sellTotal ≤ cargoCapacity − stockTotal + buyTotal
     if (kind === "sell" && delta > 0) {
-      const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
+      const resources: TradeResource[] = ["food", "wood", "stone"];
       const stockTotal = resources.reduce((s, r) => s + visit.sellStock[r], 0);
       const buyTotal = resources.reduce((s, r) => s + basket.buy[r], 0);
       const newSellTotal = resources.reduce((s, r) => s + basket.sell[r], 0) + delta;
@@ -674,7 +681,7 @@ function buildTradeHTML(state: GameState, basket: TradeBasket): string {
   const delta = basketGoldDelta(basket);
   const valid = canExecuteTradeBasket(state, basket);
 
-  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
+  const resources: TradeResource[] = ["food", "wood", "stone"];
   const stockTotal = resources.reduce((s, r) => s + visit.sellStock[r], 0);
   const buyTotal = resources.reduce((s, r) => s + basket.buy[r], 0);
   const sellTotal = resources.reduce((s, r) => s + basket.sell[r], 0);
@@ -700,12 +707,11 @@ function buildTradeHTML(state: GameState, basket: TradeBasket): string {
 
   const onHandParts = [`<strong>${state.gold}</strong> gold`, `<strong>${state.food}</strong> food`,
     `<strong>${state.wood}</strong> wood`, `<strong>${state.stone}</strong> stone`];
-  if (state.wool > 0) onHandParts.push(`<strong>${state.wool}</strong> wool`);
 
   return `
     <div id="trade-panel" role="dialog" aria-label="Merchant trade">
       <h2>✦ Travelling Merchants ✦</h2>
-      <p class="trade-flavor">Their wagon holds <strong>${visit.cargoCapacity}</strong> cargo units. Buying from them frees space for your goods — wool is yours to sell; they carry none.</p>
+      <p class="trade-flavor">Their wagon holds <strong>${visit.cargoCapacity}</strong> cargo units. Buying from them frees space for your goods.</p>
       <div class="trade-onhand">
         On hand: ${onHandParts.join(", ")}
       </div>
@@ -829,8 +835,64 @@ export function maybeShowElderDecisionModal(state: GameState, onResolve: () => v
   });
 }
 
+export function maybeShowAnataSacrificeModal(state: GameState, onResolve: () => void): void {
+  const overlay = document.getElementById("anata-overlay")!;
+  if (!state.pendingAnataSacrifice || state.gameOver) {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    return;
+  }
+
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+
+  const offered = Math.min(ANATA_SACRIFICE_FOOD_COST, state.food);
+  const cantAfford = state.food <= 0;
+
+  overlay.innerHTML = `
+    <div id="anata-panel" role="dialog" aria-label="A call for sacrifice">
+      <h2>The Priests of Anata</h2>
+      <p class="refugees-flavor">
+        The priests come from the shrine in robes of stained linen, asking for an offering —
+        bread, salt fish, the season's first stores. They say Anata's favour has steadied the
+        settlement through hard winters; she should not be allowed to forget it.
+      </p>
+      <div class="elder-choices">
+        <div class="elder-choice">
+          <h3>Make the Offering</h3>
+          <p>Stores burn on the pyre. The settlement gathers, and feels her favour.
+             <strong>−${offered} food, +${ANATA_SACRIFICE_MORALE_GAIN} morale.</strong></p>
+          <button class="anata-btn-accept" ${cantAfford ? "disabled" : ""}>${cantAfford ? "No food to offer" : "Light the pyres"}</button>
+        </div>
+        <div class="elder-choice">
+          <h3>Send Them Away</h3>
+          <p>The priests leave empty-handed. The silence is a kind of judgement.
+             <strong>${ANATA_SACRIFICE_DECLINE_MORALE} morale.</strong></p>
+          <button class="anata-btn-decline">Decline</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector<HTMLButtonElement>(".anata-btn-accept")?.addEventListener("click", () => {
+    state.log.unshift(acceptAnataSacrifice(state));
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    onResolve();
+  });
+  overlay.querySelector<HTMLButtonElement>(".anata-btn-decline")!.addEventListener("click", () => {
+    state.log.unshift(declineAnataSacrifice(state));
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
+    onResolve();
+  });
+}
+
 function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, visit: MerchantVisit): string {
-  const held = r === "wool" ? state.wool : (state as unknown as Record<string, number>)[r] as number;
+  const held = (state as unknown as Record<string, number>)[r] as number;
   const sellQty = basket.sell[r];
   const buyQty = basket.buy[r];
   const after = held - sellQty + buyQty;
@@ -838,7 +900,7 @@ function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, visi
   const buyRate = TRADE_RATES.buy[r];
 
   // Patrician sell cap: sellTotal ≤ cargoCapacity − stockTotal + buyTotal
-  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
+  const resources: TradeResource[] = ["food", "wood", "stone"];
   const stockTotal = resources.reduce((s, res) => s + visit.sellStock[res], 0);
   const buyTotal = resources.reduce((s, res) => s + basket.buy[res], 0);
   const sellTotal = resources.reduce((s, res) => s + basket.sell[res], 0);
@@ -846,7 +908,7 @@ function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, visi
 
   const sellPlusDisabled = sellQty >= held || sellTotal >= sellCap;
   const goldAfterNextBuy = state.gold + basketGoldDelta(basket) - buyRate;
-  const buyPlusDisabled = r === "wool" || buyQty >= visit.sellStock[r] || goldAfterNextBuy < 0;
+  const buyPlusDisabled = buyQty >= visit.sellStock[r] || goldAfterNextBuy < 0;
 
   const stepper = (kind: "sell" | "buy", qty: number, plusDisabled: boolean): string => `
     <div class="basket-stepper">
@@ -856,18 +918,14 @@ function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, visi
     </div>
   `;
 
-  const buyCell = r === "wool"
-    ? `<div class="basket-stepper"><span class="basket-qty" style="color:#8a6535">—</span></div>`
-    : stepper("buy", buyQty, buyPlusDisabled);
-
   return `
     <div class="basket-row">
       <span class="basket-res">
         <strong>${r.charAt(0).toUpperCase()}${r.slice(1)}</strong>
-        <span class="rate-hint">sell ${sellRate}g${r !== "wool" ? ` · buy ${buyRate}g` : " only"}</span>
+        <span class="rate-hint">sell ${sellRate}g · buy ${buyRate}g</span>
       </span>
       ${stepper("sell", sellQty, sellPlusDisabled)}
-      ${buyCell}
+      ${stepper("buy", buyQty, buyPlusDisabled)}
       <span class="basket-after align-right">${held}<span class="muted"> → </span><strong>${after}</strong></span>
     </div>
   `;
@@ -893,9 +951,6 @@ function renderTopbar(state: GameState): void {
     resChip("Stone", state.stone, productionDelta(yields.stone)),
     resChip("Gold", state.gold),
   ];
-  if (state.wool > 0 || yields.wool > 0) {
-    chips.push(resChip("Wool", state.wool, yields.wool > 0 ? productionDelta(yields.wool) : undefined));
-  }
   chips.push(moraleChip(state.morale));
   el.append(...chips);
 }
@@ -991,7 +1046,7 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
     plus.title = "The island is fully charted — no more land to explore.";
   } else if (job !== "scout" && idleCount(state) > 0 && !canAddProd) {
     const terrainLabel: Record<Exclude<Job, "scout">, string> = {
-      farmer: "grassland", shepherd: "grassland", woodcutter: "forest", hunter: "forest",
+      farmer: "grassland", woodcutter: "forest", hunter: "forest",
       quarryman: "stone", fisher: "shallows",
     };
     plus.title = `No ${terrainLabel[job]} in reach — send scouts`;
@@ -1298,13 +1353,13 @@ function buildingRow(state: GameState, def: BuildingDef, onChange: () => void): 
 }
 
 // Houses are repeatable — each row shows "N built" + a Build Another button.
-// Cost and capacity are fixed constants so this doesn't need the BuildingDef
-// shape. Pre-Long-House the row is greyed out but still visible, so the player
-// can see the mechanic exists and what unlocks it.
+// Cost escalates per existing house. Pre-Long-House the row is greyed out but
+// still visible, so the player can see the mechanic exists and what unlocks it.
 function houseRow(state: GameState, onChange: () => void): HTMLElement {
+  const next = nextHouseCost(state);
   const row = document.createElement("div");
   row.className = "building-row house-row";
-  row.title = `Private dwelling with a garden plot. +${HOUSE_CAPACITY} pop capacity, +${HOUSE_FOOD_YIELD} food/year. ${HOUSE_COST.wood} wood, ${HOUSE_COST.stone} stone each.`;
+  row.title = `Private dwelling with a garden plot. +${HOUSE_CAPACITY} pop capacity, +${HOUSE_FOOD_YIELD} food/year. Each house costs more than the last.`;
 
   const name = document.createElement("span");
   name.className = "building-name";
@@ -1317,7 +1372,7 @@ function houseRow(state: GameState, onChange: () => void): HTMLElement {
     id: "house" as BuildingId,
     name: "Houses",
     description: "",
-    cost: { wood: HOUSE_COST.wood, stone: HOUSE_COST.stone },
+    cost: { wood: next.wood, stone: next.stone },
   };
   cost.append(...costChips(state, def));
 
@@ -1325,7 +1380,7 @@ function houseRow(state: GameState, onChange: () => void): HTMLElement {
   btn.textContent = state.houses > 0 ? "Build another" : "Build";
   const blocker = houseBlockerReason(state);
   btn.disabled = blocker !== null;
-  btn.title = blocker ?? `+${HOUSE_CAPACITY} pop capacity, +${HOUSE_FOOD_YIELD} food/year`;
+  btn.title = blocker ?? `+${HOUSE_CAPACITY} pop capacity, +${HOUSE_FOOD_YIELD} food/year (each house costs more than the last)`;
   btn.addEventListener("click", () => {
     buildHouse(state);
     onChange();
@@ -1416,69 +1471,26 @@ function renderShipPanel(state: GameState, onChange: () => void): void {
   panel.appendChild(btn);
 }
 
-function renderLivestock(state: GameState, onChange: () => void): void {
+function renderLivestock(state: GameState, _onChange: () => void): void {
   const section = document.getElementById("livestock-section")!;
   const panel = document.getElementById("livestock-panel")!;
 
-  const shepherdCount = jobCount(state, "shepherd");
   const hasChickens = state.buildings.chicken_coop;
-
-  if (shepherdCount === 0 && !hasChickens) {
+  if (!hasChickens) {
     section.classList.add("hidden");
     return;
   }
   section.classList.remove("hidden");
 
-  let html = "";
-
-  if (shepherdCount > 0) {
-    const totalSheep = sheepHerdTotal(state);
-    let shepherdTiles = 0;
-    for (let y = 0; y < MAP_H; y++) {
-      for (let x = 0; x < MAP_W; x++) {
-        if (state.tiles[y][x].shepherdWorkers > 0) shepherdTiles++;
-      }
-    }
-    const foodFromSlaughter = state.sheepSlaughter * SHEEP_FOOD_PER_SLAUGHTER;
-    html += `
-      <div class="livestock-row">
-        <span class="livestock-label">Sheep:</span>
-        <span class="livestock-value">${totalSheep} (${shepherdTiles} tile${shepherdTiles === 1 ? "" : "s"})</span>
-      </div>
-      <div class="livestock-row">
-        <span class="livestock-label">Cull/yr:</span>
-        <button class="livestock-step" id="slaughter-minus" ${state.sheepSlaughter <= 0 ? "disabled" : ""}>−</button>
-        <span class="livestock-qty">${state.sheepSlaughter}</span>
-        <button class="livestock-step" id="slaughter-plus">+</button>
-        <span class="livestock-hint">${state.sheepSlaughter > 0 ? `+${foodFromSlaughter} food/yr` : "no culling"}</span>
-      </div>
-      <div class="livestock-note">Herds grow +2/yr; cap ${SHEEP_HERD_CAP_PER_TILE}/tile.</div>
-    `;
-  }
-
-  if (hasChickens) {
-    if (shepherdCount > 0) html += `<div class="livestock-divider"></div>`;
-    const eggYield = Math.floor(state.chickens * CHICKEN_EGG_FOOD_RATE);
-    html += `
-      <div class="livestock-row">
-        <span class="livestock-label">Chickens:</span>
-        <span class="livestock-value">${state.chickens}/${state.chickenCapacity}</span>
-        <span class="livestock-hint">+${eggYield} food/yr (eggs)</span>
-      </div>
-      <div class="livestock-note">Flock grows ~40%/yr; surplus culled at cap.</div>
-    `;
-  }
-
-  panel.innerHTML = html;
-
-  panel.querySelector<HTMLButtonElement>("#slaughter-minus")?.addEventListener("click", () => {
-    state.sheepSlaughter = Math.max(0, state.sheepSlaughter - 1);
-    onChange();
-  });
-  panel.querySelector<HTMLButtonElement>("#slaughter-plus")?.addEventListener("click", () => {
-    state.sheepSlaughter += 1;
-    onChange();
-  });
+  const eggYield = Math.floor(state.chickens * CHICKEN_EGG_FOOD_RATE);
+  panel.innerHTML = `
+    <div class="livestock-row">
+      <span class="livestock-label">Chickens:</span>
+      <span class="livestock-value">${state.chickens}/${state.chickenCapacity}</span>
+      <span class="livestock-hint">+${eggYield} food/yr (eggs)</span>
+    </div>
+    <div class="livestock-note">Flock grows ~40%/yr; surplus culled at cap.</div>
+  `;
 }
 
 function renderTilePopup(state: GameState): void {
@@ -1503,24 +1515,49 @@ function renderTileInfo(state: GameState, onChange: () => void): void {
   const t = state.tiles[y][x];
   panel.innerHTML = describeTile(state, t, x, y);
 
-  if (t.discovered && !t.road && t.terrain !== "water" && t.terrain !== "mountain") {
-    const btn = document.createElement("button");
+  if (t.discovered && t.terrain !== "water" && t.terrain !== "mountain") {
     const inReach = isInReach(state, x, y);
-    const canRoad = canBuildRoad(state, x, y);
-    btn.textContent = `Build Road (${ROAD_COST.wood}w ${ROAD_COST.stone}s)`;
-    btn.disabled = !canRoad;
-    if (!state.buildings.long_house) {
-      btn.title = "Requires Long House";
-    } else if (!inReach) {
-      btn.title = "Tile not in reach — build roads outward from existing territory";
-    } else if (state.wood < ROAD_COST.wood || state.stone < ROAD_COST.stone) {
-      btn.title = "Not enough resources";
+
+    if (t.roadType !== "dirt" && t.roadType !== "stone") {
+      const dirtBtn = document.createElement("button");
+      const canDirt = canBuildRoad(state, x, y, "dirt");
+      dirtBtn.textContent = `Dirt Path (${DIRT_PATH_COST.wood}w)`;
+      dirtBtn.disabled = !canDirt;
+      if (!inReach) dirtBtn.title = "Tile not in reach — build paths outward from existing territory";
+      else if (state.wood < DIRT_PATH_COST.wood) dirtBtn.title = "Not enough wood";
+      else dirtBtn.title = "Trodden path — extends reach by 1 tile.";
+      dirtBtn.addEventListener("click", () => {
+        buildRoad(state, x, y, "dirt");
+        onChange();
+      });
+      panel.appendChild(dirtBtn);
     }
-    btn.addEventListener("click", () => {
-      buildRoad(state, x, y);
-      onChange();
-    });
-    panel.appendChild(btn);
+
+    if (t.roadType !== "stone") {
+      const stoneBtn = document.createElement("button");
+      const canStone = canBuildRoad(state, x, y, "stone");
+      const upgrading = t.roadType === "dirt";
+      stoneBtn.textContent = upgrading
+        ? `Pave with Stone (${STONE_ROAD_COST.wood}w ${STONE_ROAD_COST.stone}s)`
+        : `Stone Road (${STONE_ROAD_COST.wood}w ${STONE_ROAD_COST.stone}s)`;
+      stoneBtn.disabled = !canStone;
+      if (!state.buildings.long_house) {
+        stoneBtn.title = "Requires the Long House";
+      } else if (!inReach) {
+        stoneBtn.title = "Tile not in reach — build outward from existing territory";
+      } else if (state.wood < STONE_ROAD_COST.wood || state.stone < STONE_ROAD_COST.stone) {
+        stoneBtn.title = "Not enough resources";
+      } else {
+        stoneBtn.title = upgrading
+          ? "Pave the dirt path with cut stone — extends reach by 2 tiles."
+          : "Highway of dressed stone — extends reach by 2 tiles.";
+      }
+      stoneBtn.addEventListener("click", () => {
+        buildRoad(state, x, y, "stone");
+        onChange();
+      });
+      panel.appendChild(stoneBtn);
+    }
   }
 }
 
@@ -1581,35 +1618,29 @@ function describeTileYield(state: GameState, t: Tile): string | null {
   const cultivating = t.state === "cultivating";
   const prefix = cultivating ? "Will yield (next year): " : "Yields: ";
   if (t.terrain === "grass") {
-    const shepherds = t.shepherdWorkers;
-    const farmers = t.workers - shepherds;
-    const parts: string[] = [];
-    if (farmers > 0) {
-      const granaryBonus = state.buildings.granary ? 0.5 : 0;
-      const perWorker = 2 + t.fertility + granaryBonus;
-      const total = Math.floor(farmers * perWorker);
-      const bonusParts: string[] = ["2 base"];
-      if (t.fertility > 0) bonusParts.push("fertile +1");
-      if (granaryBonus > 0) bonusParts.push("granary +0.5");
-      parts.push(`+${total} food (${bonusParts.join(", ")}/farmer)`);
-    }
-    if (shepherds > 0) {
-      parts.push(`+${shepherds} food (milk), +${shepherds} wool`);
-    }
-    return parts.length > 0 ? `${prefix}${parts.join("; ")}/year` : null;
+    const granaryBonus = state.buildings.granary ? 0.5 : 0;
+    const perWorker = 2 + t.fertility + granaryBonus;
+    const total = Math.floor(t.workers * perWorker);
+    const bonusParts: string[] = ["2 base"];
+    if (t.fertility > 0) bonusParts.push("fertile +1");
+    if (granaryBonus > 0) bonusParts.push("granary +0.5");
+    return `${prefix}+${total} food (${bonusParts.join(", ")}/farmer)/year`;
   }
   if (t.terrain === "forest") {
     const lodgeBonus = state.buildings.hunting_lodge ? 0.5 : 0;
     const huntFood = Math.floor(t.hunterWorkers * (3 + lodgeBonus));
     const woodcutters = t.workers - t.hunterWorkers;
-    const wood = woodcutters * 2;
+    const lumberBonus = state.buildings.lumber_camp ? 0.5 : 0;
+    const wood = Math.floor(woodcutters * (2 + lumberBonus));
     const parts: string[] = [];
     if (huntFood > 0) parts.push(`+${huntFood} food`);
     if (wood > 0) parts.push(`+${wood} wood`);
     return parts.length > 0 ? `${prefix}${parts.join(", ")}/year` : null;
   }
   if (t.terrain === "stone") {
-    return `${prefix}+${t.workers} stone/year`;
+    const masonBonus = state.buildings.mason_workshop ? 0.5 : 0;
+    const stone = Math.floor(t.workers * (1 + masonBonus));
+    return `${prefix}+${stone} stone/year`;
   }
   if (t.terrain === "beach" || t.terrain === "river") {
     const lo = t.fishRichness > 0 ? 2 : 1;
@@ -1622,8 +1653,7 @@ function describeTileYield(state: GameState, t: Tile): string | null {
 function terrainLabel(t: Tile): string {
   if (t.state === "worked" || t.state === "fallow") {
     if (t.terrain === "grass") {
-      if (t.state === "worked") return t.shepherdWorkers > 0 ? "Pasture" : "Farmland";
-      return t.shepherdWorkers > 0 ? "Fallow Pasture" : "Fallow Farmland";
+      return t.state === "worked" ? "Farmland" : "Fallow Farmland";
     }
     if (t.terrain === "forest") {
       const hasHunters = t.hunterWorkers > 0;

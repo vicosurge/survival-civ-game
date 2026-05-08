@@ -5,3 +5,4 @@ dist/
 .vite/
 .claude/
 sim/*.csv
+ideas.txt

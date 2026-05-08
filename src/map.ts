@@ -1,6 +1,7 @@
 import {
   BASE_REACH,
   CAPACITY_RANGE,
+  DIRT_PATH_REACH,
   FERTILE_GRASS_CHANCE,
   FISH_RICH_CHANCE,
   GameState,
@@ -9,6 +10,7 @@ import {
   MAP_H,
   MAP_W,
   RESERVE_RANGE,
+  STONE_ROAD_REACH,
   Terrain,
   Tile,
   WORKED_REACH,
@@ -82,14 +84,12 @@ function makeTile(terrain: Terrain): Tile {
     capacity,
     workers: 0,
     hunterWorkers: 0,
-    shepherdWorkers: 0,
     gameExhausted: false,
     reserve,
-    sheepHerd: 0,
     fertility,
     fishRichness,
     yearsInState: 0,
-    road: false,
+    roadType: "none",
   };
 }
 
@@ -272,14 +272,17 @@ function cheby(ax: number, ay: number, bx: number, by: number): number {
 }
 
 // A tile is in reach if it's close to town, adjacent to any worked tile, or
-// adjacent to any road tile. Roads are permanent reach anchors.
+// adjacent to a road. Stone roads reach further than dirt paths or worked
+// tiles — they're highways, not just packed earth.
 export function isInReach(state: GameState, x: number, y: number): boolean {
   if (cheby(x, y, state.town.x, state.town.y) <= BASE_REACH) return true;
   for (let ty = 0; ty < MAP_H; ty++) {
     for (let tx = 0; tx < MAP_W; tx++) {
       const t = state.tiles[ty][tx];
-      if (t.state !== "worked" && !t.road) continue;
-      if (cheby(x, y, tx, ty) <= WORKED_REACH) return true;
+      const dist = cheby(x, y, tx, ty);
+      if (t.roadType === "stone" && dist <= STONE_ROAD_REACH) return true;
+      if (t.roadType === "dirt"  && dist <= DIRT_PATH_REACH)  return true;
+      if (t.state === "worked"   && dist <= WORKED_REACH)     return true;
     }
   }
   return false;
@@ -303,18 +306,13 @@ function tileAcceptsWorker(tile: Tile, job: Exclude<Job, "scout">): boolean {
   if (!JOB_TERRAINS[job].includes(tile.terrain)) return false;
   if (tile.state === "exhausted") return false;
   if (job === "hunter" && tile.gameExhausted) return false;
-  // Farmers and shepherds are mutually exclusive on a grass tile.
-  if (tile.terrain === "grass") {
-    if (job === "farmer" && tile.shepherdWorkers > 0) return false;
-    if (job === "shepherd" && tile.workers > tile.shepherdWorkers) return false;
-  }
   return tile.workers < tile.capacity;
 }
 
 // The "tile bonus" the allocator optimises for when picking a tile for a given
-// job. Both farmers and shepherds prefer fertile grass; fishers prefer rich waters.
+// job. Farmers prefer fertile grass; fishers prefer rich waters.
 function tileBonusForJob(tile: Tile, job: Exclude<Job, "scout">): number {
-  if (job === "farmer" || job === "shepherd") return tile.fertility;
+  if (job === "farmer") return tile.fertility;
   if (job === "fisher") return tile.fishRichness;
   return 0;
 }
@@ -354,7 +352,7 @@ export function totalReachableCapacity(state: GameState, job: Exclude<Job, "scou
 }
 
 // Sum of workers for a given job. Forest tiles split hunters/woodcutters via
-// hunterWorkers; grass tiles split farmers/shepherds via shepherdWorkers.
+// hunterWorkers; everything else maps job → tile 1:1.
 export function currentWorkers(state: GameState, job: Exclude<Job, "scout">): number {
   const terrains = JOB_TERRAINS[job];
   let n = 0;
@@ -364,8 +362,6 @@ export function currentWorkers(state: GameState, job: Exclude<Job, "scout">): nu
       if (!terrains.includes(t.terrain)) continue;
       if (t.terrain === "forest") {
         n += job === "hunter" ? t.hunterWorkers : t.workers - t.hunterWorkers;
-      } else if (t.terrain === "grass") {
-        n += job === "shepherd" ? t.shepherdWorkers : t.workers - t.shepherdWorkers;
       } else {
         n += t.workers;
       }
@@ -389,9 +385,6 @@ export function findWorkerToRemove(
       if (t.terrain === "forest") {
         if (job === "hunter" && t.hunterWorkers <= 0) continue;
         if (job === "woodcutter" && t.workers - t.hunterWorkers <= 0) continue;
-      } else if (t.terrain === "grass") {
-        if (job === "shepherd" && t.shepherdWorkers <= 0) continue;
-        if (job === "farmer" && t.workers - t.shepherdWorkers <= 0) continue;
       } else if (t.workers <= 0) {
         continue;
       }

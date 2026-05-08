@@ -20,8 +20,8 @@ import {
   Job,
   LANDING_SPOTS,
   LIFESPAN_RANGE,
-  MAP_H,
-  MAP_W,
+  LUMBER_CAMP_WOODCUTTER_BONUS,
+  MASON_WORKSHOP_QUARRYMAN_BONUS,
   MORALE_MAX,
   MORALE_MIN,
   MORALE_START,
@@ -35,8 +35,6 @@ import {
   SCRIPTED_WAVE_TARGETS,
   ScriptedWave,
   ScriptedWaveId,
-  SHEPHERD_FOOD_YIELD,
-  SHEPHERD_WOOL_YIELD,
   STARTER_AGE_RANGE,
   STARTER_CHILD_AGE_RANGE,
   STARTER_LIFESPAN_FLOOR_BONUS,
@@ -130,18 +128,16 @@ export function newGame(departure: DepartureChoices): GameState {
     scriptedWaves: rollScriptedWaves(),
     merchantVisit: null,
     pendingRefugees: null,
+    pendingAnataSacrifice: false,
     elderTransitions: 0,
     elderPolicy: null,
     pendingElderDecision: false,
     childPolicy: null,
     pendingChildDecision: false,
-    buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, long_house: false, shrine_of_anata: false, chicken_coop: false },
-    unlockedBuildings: { granary: true, palisade: true, well: true, hunting_lodge: true, long_house: false, shrine_of_anata: false, chicken_coop: true },
+    buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, lumber_camp: false, mason_workshop: false, long_house: false, shrine_of_anata: false, chicken_coop: false },
+    unlockedBuildings: { granary: true, palisade: true, well: true, hunting_lodge: true, lumber_camp: true, mason_workshop: true, long_house: false, shrine_of_anata: false, chicken_coop: true },
     townUpgrades: { communal_garden: false, workshop_yard: false },
     houses: 0,
-    wool: 0,
-    sheepSlaughter: 0,
-    sheepSlaughterNotified: false,
     chickens: 0,
     chickenCapacity: CHICKEN_CAP_INITIAL,
     chickenSacrificeNotified: false,
@@ -240,25 +236,12 @@ export function childCount(state: GameState): number {
 export function assignedTotal(state: GameState): number {
   return (
     currentWorkers(state, "farmer") +
-    currentWorkers(state, "shepherd") +
     currentWorkers(state, "woodcutter") +
     currentWorkers(state, "quarryman") +
     currentWorkers(state, "hunter") +
     currentWorkers(state, "fisher") +
     state.scouts
   );
-}
-
-// Total sheep across all active shepherd tiles.
-export function sheepHerdTotal(state: GameState): number {
-  let total = 0;
-  for (let y = 0; y < MAP_H; y++) {
-    for (let x = 0; x < MAP_W; x++) {
-      const t = state.tiles[y][x];
-      if (t.terrain === "grass" && t.shepherdWorkers > 0) total += t.sheepHerd;
-    }
-  }
-  return total;
 }
 
 // Idle = fertile adults not assigned to a job. Elders don't count — they've
@@ -296,33 +279,28 @@ export function projectedYields(state: GameState): {
   food: { production: number; consumption: number; net: number };
   wood: number;
   stone: number;
-  wool: number;
 } {
-  let foodProd = 0, woodProd = 0, stoneProd = 0, woolProd = 0;
+  let foodProd = 0, woodProd = 0, stoneProd = 0;
   for (let y = 0; y < state.tiles.length; y++) {
     for (let x = 0; x < state.tiles[y].length; x++) {
       const t = state.tiles[y][x];
       if (t.state !== "worked" && t.state !== "cultivating") continue;
       if (t.workers <= 0) continue;
       if (t.terrain === "grass") {
-        const shepherds = t.shepherdWorkers;
-        const farmers = t.workers - shepherds;
-        if (farmers > 0) {
-          foodProd += farmers * (YIELD_PER_WORKER.farmer + t.fertility + (state.buildings.granary ? GRANARY_FARMER_BONUS : 0));
-        }
-        if (shepherds > 0) {
-          foodProd += shepherds * SHEPHERD_FOOD_YIELD;
-          woolProd += shepherds * SHEPHERD_WOOL_YIELD;
-        }
+        foodProd += t.workers * (YIELD_PER_WORKER.farmer + t.fertility + (state.buildings.granary ? GRANARY_FARMER_BONUS : 0));
       } else if (t.terrain === "forest") {
         if (t.hunterWorkers > 0) {
           const lodgeBonus = state.buildings.hunting_lodge ? HUNTING_LODGE_HUNTER_BONUS : 0;
           foodProd += t.hunterWorkers * (YIELD_PER_WORKER.hunter + lodgeBonus);
         }
         const woodcutters = t.workers - t.hunterWorkers;
-        if (woodcutters > 0) woodProd += woodcutters * YIELD_PER_WORKER.woodcutter;
+        if (woodcutters > 0) {
+          const lumberBonus = state.buildings.lumber_camp ? LUMBER_CAMP_WOODCUTTER_BONUS : 0;
+          woodProd += woodcutters * (YIELD_PER_WORKER.woodcutter + lumberBonus);
+        }
       } else if (t.terrain === "stone") {
-        stoneProd += t.workers * YIELD_PER_WORKER.quarryman;
+        const masonBonus = state.buildings.mason_workshop ? MASON_WORKSHOP_QUARRYMAN_BONUS : 0;
+        stoneProd += t.workers * (YIELD_PER_WORKER.quarryman + masonBonus);
       } else if (t.terrain === "beach" || t.terrain === "river") {
         foodProd += t.workers * (YIELD_PER_WORKER.fisher + t.fishRichness);
       }
@@ -364,6 +342,5 @@ export function projectedYields(state: GameState): {
     food: { production: foodProd, consumption: foodCons, net: foodProd - foodCons },
     wood: woodProd,
     stone: stoneProd,
-    wool: woolProd,
   };
 }

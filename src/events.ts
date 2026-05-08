@@ -1,9 +1,9 @@
 import { exploreFrontier, hasUndiscoveredFrontier } from "./map";
 import { applyMorale } from "./state";
 import {
-  ADULT_AGE,
   ALARM_RESPONSES,
   BANDIT_PURSUIT_YEARS,
+  BANDIT_THEFT_RANGE,
   BuildingId,
   DEPARTURE_TIMINGS,
   GameState,
@@ -12,7 +12,8 @@ import {
   MERCHANT_STOCK_UNITS,
   MerchantVisit,
   MORALE_ATTRACT_THRESHOLD,
-  MORALE_FOUNDER_EXTRA,
+  MORALE_BANDIT_EMPTY,
+  MORALE_BANDIT_THEFT,
   MORALE_PREY_THRESHOLD,
   SCRIPTED_WAVE_REFUGEES,
   ScriptedWaveId,
@@ -31,7 +32,7 @@ function rollMerchantVisit(): MerchantVisit {
   const qty = randInt(MERCHANT_STOCK_UNITS[0], MERCHANT_STOCK_UNITS[1]);
   return {
     cargoCapacity,
-    sellStock: { food: 0, wood: 0, stone: 0, wool: 0, [picked]: qty },
+    sellStock: { food: 0, wood: 0, stone: 0, [picked]: qty },
   };
 }
 
@@ -41,18 +42,6 @@ interface EventDef {
   blockedBy?: BuildingId;
   blockedText?: string;
   apply: (state: GameState) => LogEntry;
-}
-
-// Remove one pop, preferring adults (they die defending) or children (they starve).
-// Returns the removed pops so callers can inspect flags (e.g. founder status).
-function removePops(state: GameState, count: number, prefer: "adult" | "child"): import("./types").Pop[] {
-  const pops = state.pops;
-  pops.sort((a, b) => {
-    if (prefer === "child") return a.age - b.age; // youngest first
-    return b.age - a.age; // oldest first
-  });
-  const actual = Math.min(count, pops.length);
-  return pops.splice(0, actual);
 }
 
 const EVENTS: EventDef[] = [
@@ -119,29 +108,29 @@ const EVENTS: EventDef[] = [
     id: "bandits",
     weight: 7,
     blockedBy: "palisade",
-    blockedText: "Bandits from the highlands test the palisade and withdraw empty-handed. (Averted)",
+    blockedText: "Stragglers test the palisade in the night and withdraw empty-handed. (Averted)",
     apply: (s) => {
-      const goldLost = Math.min(5, s.gold);
-      s.gold -= goldLost;
-      const adults = s.pops.filter((p) => p.age >= ADULT_AGE).length;
-      const lost = adults > 2 ? removePops(s, 1, "adult") : [];
-      const founderLost = lost.filter((p) => p.founder).length;
-      const moraleLost = lost.length > 0
-        ? -(7 + founderLost * MORALE_FOUNDER_EXTRA)
-        : -2;
-      applyMorale(s, moraleLost);
-      const founderNote = founderLost > 0 ? " One of the founders is among the dead." : "";
       const RAID_INTRO = [
-        "Bandits from the highlands raid the settlement.",
-        "Hardened survivors from the island's interior strike at dusk.",
-        "Mountain-dwellers, lean and desperate, descend on the settlement.",
+        "A band of Exarum stragglers — washed up on a different beach, lean and angry — raid the storehouses.",
+        "Other survivors of the war, who landed elsewhere on Cambrera and turned to taking what they need, slip in at dusk.",
+        "Refugees from the war who chose the road of the knife over the road of the plough come for your stores.",
       ];
       const intro = RAID_INTRO[Math.floor(Math.random() * RAID_INTRO.length)];
+      if (s.food <= 0) {
+        applyMorale(s, MORALE_BANDIT_EMPTY);
+        return {
+          year: s.year,
+          text: `${intro} They find the storehouses empty and leave with nothing — but the village sleeps poorly. (${MORALE_BANDIT_EMPTY} morale)`,
+          tone: "bad",
+        };
+      }
+      const desired = randInt(BANDIT_THEFT_RANGE[0], BANDIT_THEFT_RANGE[1]);
+      const stolen = Math.min(desired, s.food);
+      s.food -= stolen;
+      applyMorale(s, MORALE_BANDIT_THEFT);
       return {
         year: s.year,
-        text: lost.length > 0
-          ? `${intro} A defender falls.${founderNote} (-${goldLost} gold, -${lost.length} adult)`
-          : `${intro} They circle but find little. (-${goldLost} gold)`,
+        text: `${intro} They make off with stores before dawn. (-${stolen} food, ${MORALE_BANDIT_THEFT} morale)`,
         tone: "bad",
       };
     },
@@ -168,12 +157,12 @@ const EVENTS: EventDef[] = [
     apply: (s) => {
       s.pendingRefugees = {
         count: 2,
-        text: "Two wanderers arrive at your gates, gaunt and road-worn, asking for shelter.",
+        text: "A small fishing skiff scrapes onto the beach. Two strangers step out — gaunt, sea-worn — and ask for shelter. They say a passing trader put them ashore here when they could pay no further.",
         year: s.year,
       };
       return {
         year: s.year,
-        text: "Two wanderers arrive seeking refuge — they wait at the gate for your word.",
+        text: "Two strangers come ashore from a passing skiff, asking for shelter — they wait at the beach for your word.",
         tone: "neutral",
       };
     },
@@ -202,6 +191,18 @@ const EVENTS: EventDef[] = [
       text: "Strange lights dance above the mountains for three nights. Elders whisper of the old magic, now almost gone.",
       tone: "neutral",
     }),
+  },
+  {
+    id: "anata_sacrifice",
+    weight: 5,
+    apply: (s) => {
+      s.pendingAnataSacrifice = true;
+      return {
+        year: s.year,
+        text: "The priests of Anata call for an offering — they wait at the shrine for your decision.",
+        tone: "neutral",
+      };
+    },
   },
   {
     id: "quiet_year",
@@ -291,6 +292,10 @@ function adjustedWeight(ev: EventDef, state: GameState): number {
     if (state.morale <= MORALE_PREY_THRESHOLD) mult++;
     if (isPursued(state) && state.year <= BANDIT_PURSUIT_YEARS) mult++;
     return ev.weight * mult;
+  }
+  if (ev.id === "anata_sacrifice") {
+    // Only meaningful once the shrine stands.
+    return state.buildings.shrine_of_anata ? ev.weight : 0;
   }
   return ev.weight;
 }

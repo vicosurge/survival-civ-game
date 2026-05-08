@@ -18,6 +18,9 @@ import {
 import { adultCount, applyMorale, childCount, elderCount, fertileCount, idleCount, makeBabyPop, makeNewcomerPop, popCapacity, totalPop } from "./state";
 import {
   ADULT_AGE,
+  ANATA_SACRIFICE_DECLINE_MORALE,
+  ANATA_SACRIFICE_FOOD_COST,
+  ANATA_SACRIFICE_MORALE_GAIN,
   ELDER_AGE,
   ELDER_DECISION_TRIGGER,
   ELDER_WORK_FOOD_YIELD,
@@ -42,6 +45,7 @@ import {
   CHILD_WORK_FOOD_YIELD,
   CHILD_WORK_WOOD_YIELD,
   CULTIVATION_YEARS,
+  DIRT_PATH_COST,
   FALLOW_REVERT_YEARS,
   FISHER_YIELD_BASE,
   FISHER_YIELD_RICH,
@@ -52,7 +56,8 @@ import {
   FOOD_PER_CHILD,
   GameState,
   GRANARY_FARMER_BONUS,
-  HOUSE_COST,
+  HOUSE_COST_BASE,
+  HOUSE_COST_INCREMENT,
   HOUSE_FOOD_YIELD,
   HUNTING_LODGE_HUNTER_BONUS,
   IDLE_ADULT_BIRTH_CHANCE,
@@ -60,8 +65,10 @@ import {
   LogEntry,
   LONG_HOUSE_MORALE_BONUS,
   LONG_HOUSE_POP_GATE,
+  LUMBER_CAMP_WOODCUTTER_BONUS,
   MAP_H,
   MAP_W,
+  MASON_WORKSHOP_QUARRYMAN_BONUS,
   MERCHANT_CARGO_RANGE,
   MERCHANT_STOCK_UNITS,
   MerchantVisit,
@@ -73,14 +80,9 @@ import {
   MORALE_REFUGEE_ACCEPT,
   MORALE_REFUGEE_REJECT,
   Pop,
-  ROAD_COST,
+  RoadType,
   SCOUT_REVEAL_PER_YEAR,
-  SHEEP_FOOD_PER_SLAUGHTER,
-  SHEEP_GROWTH_PER_YEAR,
-  SHEEP_HERD_CAP_PER_TILE,
-  SHEEP_STARTING_HERD,
-  SHEPHERD_FOOD_YIELD,
-  SHEPHERD_WOOL_YIELD,
+  STONE_ROAD_COST,
   TOWN_UPGRADES,
   TownUpgradeDef,
   TownUpgradeId,
@@ -183,7 +185,7 @@ export function endYear(state: GameState): void {
   }
 
   // 1. Collect yields from every worked tile, draining reserves where applicable.
-  let foodGain = 0, woodGain = 0, stoneGain = 0, woolGain = 0;
+  let foodGain = 0, woodGain = 0, stoneGain = 0;
   let fisherCount = 0;
   const exhaustionNotes: string[] = [];
   let quarriesExhausted = 0;
@@ -192,18 +194,8 @@ export function endYear(state: GameState): void {
       const t = state.tiles[y][x];
       if (t.state !== "worked" || t.workers <= 0) continue;
       if (t.terrain === "grass") {
-        const shepherds = t.shepherdWorkers;
-        const farmers = t.workers - shepherds;
-        if (farmers > 0) {
-          const granaryBonus = state.buildings.granary ? GRANARY_FARMER_BONUS : 0;
-          foodGain += farmers * (YIELD_PER_WORKER.farmer + t.fertility + granaryBonus);
-        }
-        if (shepherds > 0) {
-          foodGain += shepherds * SHEPHERD_FOOD_YIELD;
-          woolGain += shepherds * SHEPHERD_WOOL_YIELD;
-          // Herd grows whether or not the player slaughters — growth is natural.
-          t.sheepHerd = Math.min(SHEEP_HERD_CAP_PER_TILE, t.sheepHerd + SHEEP_GROWTH_PER_YEAR);
-        }
+        const granaryBonus = state.buildings.granary ? GRANARY_FARMER_BONUS : 0;
+        foodGain += t.workers * (YIELD_PER_WORKER.farmer + t.fertility + granaryBonus);
       } else if (t.terrain === "forest") {
         if (t.hunterWorkers > 0) {
           const lodgeBonus = state.buildings.hunting_lodge ? HUNTING_LODGE_HUNTER_BONUS : 0;
@@ -222,9 +214,13 @@ export function endYear(state: GameState): void {
         }
         // Timber regrows — woodcutters never drain the reserve.
         const woodcutters = t.workers - t.hunterWorkers;
-        if (woodcutters > 0) woodGain += woodcutters * YIELD_PER_WORKER.woodcutter;
+        if (woodcutters > 0) {
+          const lumberBonus = state.buildings.lumber_camp ? LUMBER_CAMP_WOODCUTTER_BONUS : 0;
+          woodGain += woodcutters * (YIELD_PER_WORKER.woodcutter + lumberBonus);
+        }
       } else if (t.terrain === "stone") {
-        const desired = t.workers * YIELD_PER_WORKER.quarryman;
+        const masonBonus = state.buildings.mason_workshop ? MASON_WORKSHOP_QUARRYMAN_BONUS : 0;
+        const desired = Math.floor(t.workers * (YIELD_PER_WORKER.quarryman + masonBonus));
         const actual = Math.min(desired, t.reserve);
         stoneGain += actual;
         t.reserve -= actual;
@@ -273,33 +269,6 @@ export function endYear(state: GameState): void {
     stoneGain += y.stone ?? 0;
   }
 
-  // Sheep slaughter standing order — runs across all shepherd tiles.
-  let slaughtered = 0;
-  if (state.sheepSlaughter > 0) {
-    let remaining = state.sheepSlaughter;
-    for (let y = 0; y < MAP_H && remaining > 0; y++) {
-      for (let x = 0; x < MAP_W && remaining > 0; x++) {
-        const t = state.tiles[y][x];
-        if (t.terrain !== "grass" || t.shepherdWorkers <= 0) continue;
-        const take = Math.min(t.sheepHerd, remaining);
-        t.sheepHerd -= take;
-        slaughtered += take;
-        remaining -= take;
-      }
-    }
-    if (slaughtered > 0) {
-      foodGain += slaughtered * SHEEP_FOOD_PER_SLAUGHTER;
-      if (!state.sheepSlaughterNotified) {
-        state.sheepSlaughterNotified = true;
-        state.log.unshift({
-          year,
-          text: `Standing order: ${slaughtered} sheep culled from the flocks (+${slaughtered * SHEEP_FOOD_PER_SLAUGHTER} food). This will run automatically each year — adjust the slaughter count in the Livestock panel.`,
-          tone: "neutral",
-        });
-      }
-    }
-  }
-
   // Chicken coop — eggs, flock growth, auto-cull at capacity cap.
   if (state.buildings.chicken_coop && state.chickens > 0) {
     const eggs = Math.floor(state.chickens * CHICKEN_EGG_FOOD_RATE);
@@ -323,10 +292,10 @@ export function endYear(state: GameState): void {
   }
 
   foodGain = Math.floor(foodGain);
+  woodGain = Math.floor(woodGain);
   state.food += foodGain;
   state.wood += woodGain;
   state.stone += stoneGain;
-  state.wool += woolGain;
   state.fishingYears += fisherCount;
 
   // 2. Scouts reveal new tiles.
@@ -344,7 +313,7 @@ export function endYear(state: GameState): void {
 
   state.log.unshift({
     year,
-    text: `Harvest — +${foodGain} food, +${woodGain} wood, +${stoneGain} stone${woolGain > 0 ? `, +${woolGain} wool` : ""}.${
+    text: `Harvest — +${foodGain} food, +${woodGain} wood, +${stoneGain} stone.${
       revealed > 0 ? ` Scouts revealed ${revealed} new tile${revealed === 1 ? "" : "s"}.` : ""
     }`,
     tone: "neutral",
@@ -589,7 +558,6 @@ function reconcileAllocation(state: GameState): void {
   let totalAssigned =
     state.scouts +
     currentWorkers(state, "farmer") +
-    currentWorkers(state, "shepherd") +
     currentWorkers(state, "woodcutter") +
     currentWorkers(state, "quarryman") +
     currentWorkers(state, "hunter") +
@@ -601,10 +569,9 @@ function reconcileAllocation(state: GameState): void {
   state.scouts -= scoutShed;
   over -= scoutShed;
 
-  // Shed order: quarryman (no food) → shepherd (small food, wool is luxury) →
-  // woodcutter (no food) → hunter (food, finite) → fisher (food, variable) →
-  // farmer (food, most reliable) last.
-  const prodJobs: Array<Exclude<Job, "scout">> = ["quarryman", "shepherd", "woodcutter", "hunter", "fisher", "farmer"];
+  // Shed order: quarryman (no food) → woodcutter (no food) → hunter (food,
+  // finite) → fisher (food, variable) → farmer (food, most reliable) last.
+  const prodJobs: Array<Exclude<Job, "scout">> = ["quarryman", "woodcutter", "hunter", "fisher", "farmer"];
   for (const job of prodJobs) {
     while (over > 0) {
       const slot = findWorkerToRemove(state, job);
@@ -620,11 +587,6 @@ export function assignWorker(state: GameState, x: number, y: number, job: Exclud
   const t = state.tiles[y][x];
   if (t.workers >= t.capacity) return;
   if (job === "hunter") t.hunterWorkers += 1;
-  if (job === "shepherd") {
-    t.shepherdWorkers += 1;
-    // Initialise the herd on first shepherd arrival; persists if shepherd later leaves.
-    if (t.sheepHerd === 0) t.sheepHerd = SHEEP_STARTING_HERD;
-  }
   t.workers += 1;
   if (t.state === "wild") {
     if (t.terrain === "beach" || t.terrain === "river") {
@@ -643,7 +605,6 @@ export function unassignWorker(state: GameState, x: number, y: number, job: Excl
   const t = state.tiles[y][x];
   if (t.workers <= 0) return;
   if (job === "hunter" && t.terrain === "forest") t.hunterWorkers = Math.max(0, t.hunterWorkers - 1);
-  if (job === "shepherd" && t.terrain === "grass") t.shepherdWorkers = Math.max(0, t.shepherdWorkers - 1);
   t.workers -= 1;
   if (t.workers === 0 && t.state === "cultivating") {
     t.state = "wild";
@@ -662,10 +623,10 @@ export function currentJobCount(state: GameState, job: Job): number {
 export function canExecuteTradeBasket(state: GameState, basket: TradeBasket): boolean {
   const visit = state.merchantVisit;
   if (!visit) return false;
-  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
+  const resources: TradeResource[] = ["food", "wood", "stone"];
   for (const r of resources) {
     if (basket.sell[r] < 0 || basket.buy[r] < 0) return false;
-    const playerStock = r === "wool" ? state.wool : (state as unknown as Record<string, number>)[r];
+    const playerStock = (state as unknown as Record<string, number>)[r];
     if (basket.sell[r] > playerStock) return false;
     if (basket.buy[r] > visit.sellStock[r]) return false;
   }
@@ -680,12 +641,11 @@ export function canExecuteTradeBasket(state: GameState, basket: TradeBasket): bo
 }
 
 export function executeTradeBasket(state: GameState, basket: TradeBasket): LogEntry {
-  const resources: TradeResource[] = ["food", "wood", "stone", "wool"];
+  const resources: TradeResource[] = ["food", "wood", "stone"];
   for (const r of resources) {
     const net = basket.buy[r] - basket.sell[r];
     if (net === 0) continue;
-    if (r === "wool") state.wool += net;
-    else (state as unknown as Record<string, number>)[r] += net;
+    (state as unknown as Record<string, number>)[r] += net;
   }
   const delta = basketGoldDelta(basket);
   state.gold += delta;
@@ -723,7 +683,7 @@ export function rollMerchantVisit(): MerchantVisit {
   const qty = randInt(MERCHANT_STOCK_UNITS[0], MERCHANT_STOCK_UNITS[1]);
   return {
     cargoCapacity,
-    sellStock: { food: 0, wood: 0, stone: 0, wool: 0, [picked]: qty },
+    sellStock: { food: 0, wood: 0, stone: 0, [picked]: qty },
   };
 }
 
@@ -771,7 +731,8 @@ export function build(state: GameState, id: BuildingId): void {
   state.buildings[id] = true;
   if (id === "long_house") {
     applyMorale(state, LONG_HOUSE_MORALE_BONUS);
-    state.tiles[state.town.y][state.town.x].road = true;
+    // The civic anchor and the first paved highway are the same moment.
+    state.tiles[state.town.y][state.town.x].roadType = "stone";
   }
   if (id === "chicken_coop") {
     state.chickens = CHICKEN_STARTING_FLOCK;
@@ -789,12 +750,21 @@ export function build(state: GameState, id: BuildingId): void {
 }
 
 // Houses are repeatable, so they live outside the one-time BUILDINGS flags.
+// Cost escalates per existing house: house N costs base + N×increment.
+export function nextHouseCost(state: GameState): { wood: number; stone: number } {
+  return {
+    wood:  HOUSE_COST_BASE.wood  + state.houses * HOUSE_COST_INCREMENT.wood,
+    stone: HOUSE_COST_BASE.stone + state.houses * HOUSE_COST_INCREMENT.stone,
+  };
+}
+
 export function houseBlockerReason(state: GameState): string | null {
   if (state.gameOver) return "Game over.";
   if (!state.buildings.long_house) return "Requires the Long House.";
+  const cost = nextHouseCost(state);
   const short: string[] = [];
-  if (HOUSE_COST.wood > state.wood) short.push(`${HOUSE_COST.wood - state.wood} wood`);
-  if (HOUSE_COST.stone > state.stone) short.push(`${HOUSE_COST.stone - state.stone} stone`);
+  if (cost.wood > state.wood) short.push(`${cost.wood - state.wood} wood`);
+  if (cost.stone > state.stone) short.push(`${cost.stone - state.stone} stone`);
   if (short.length > 0) return `Short: ${short.join(", ")}.`;
   return null;
 }
@@ -805,36 +775,54 @@ export function canBuildHouse(state: GameState): boolean {
 
 export function buildHouse(state: GameState): void {
   if (!canBuildHouse(state)) return;
-  state.wood -= HOUSE_COST.wood;
-  state.stone -= HOUSE_COST.stone;
+  const cost = nextHouseCost(state);
+  state.wood -= cost.wood;
+  state.stone -= cost.stone;
   state.houses += 1;
   const text = state.houses === 1 ? FIRST_HOUSE_LINE : additionalHouseLine(state.houses);
   state.log.unshift({ year: state.year, text, tone: "good" });
 }
 
-export function canBuildRoad(state: GameState, x: number, y: number): boolean {
+// Road tiers — dirt path is cheap and ungated; stone road requires the Long
+// House but reaches further. Both are placed on individual tiles, both are
+// permanent. Calling buildRoad with kind="stone" upgrades a dirt path.
+export function roadCost(kind: RoadType): { wood: number; stone: number } {
+  if (kind === "stone") return { wood: STONE_ROAD_COST.wood, stone: STONE_ROAD_COST.stone };
+  if (kind === "dirt")  return { wood: DIRT_PATH_COST.wood,  stone: DIRT_PATH_COST.stone  };
+  return { wood: 0, stone: 0 };
+}
+
+export function canBuildRoad(state: GameState, x: number, y: number, kind: "dirt" | "stone"): boolean {
   if (state.gameOver) return false;
-  if (!state.buildings.long_house) return false;
   const t = state.tiles[y][x];
   if (!t.discovered) return false;
-  if (t.road) return false;
   if (t.terrain === "water" || t.terrain === "mountain") return false;
   if (!isInReach(state, x, y)) return false;
-  if (state.wood < ROAD_COST.wood) return false;
-  if (state.stone < ROAD_COST.stone) return false;
+  if (kind === "stone" && !state.buildings.long_house) return false;
+  // Dirt path: only on bare ground. Stone road: bare ground OR upgrade an
+  // existing dirt path on the same tile.
+  if (kind === "dirt" && t.roadType !== "none") return false;
+  if (kind === "stone" && t.roadType === "stone") return false;
+  const cost = roadCost(kind);
+  if (state.wood < cost.wood) return false;
+  if (state.stone < cost.stone) return false;
   return true;
 }
 
-export function buildRoad(state: GameState, x: number, y: number): void {
-  if (!canBuildRoad(state, x, y)) return;
-  state.wood -= ROAD_COST.wood;
-  state.stone -= ROAD_COST.stone;
-  state.tiles[y][x].road = true;
-  state.log.unshift({
-    year: state.year,
-    text: `A road is laid through (${x},${y}). The path holds.`,
-    tone: "good",
-  });
+export function buildRoad(state: GameState, x: number, y: number, kind: "dirt" | "stone"): void {
+  if (!canBuildRoad(state, x, y, kind)) return;
+  const cost = roadCost(kind);
+  state.wood -= cost.wood;
+  state.stone -= cost.stone;
+  const tile = state.tiles[y][x];
+  const upgrading = kind === "stone" && tile.roadType === "dirt";
+  tile.roadType = kind;
+  const text = kind === "stone"
+    ? (upgrading
+        ? `The dirt path through (${x},${y}) is paved over with cut stone. Wagons will not bog here again.`
+        : `A stone road is laid through (${x},${y}) — quarried, dressed, and set deep. It will outlast us.`)
+    : `A dirt path is trodden through (${x},${y}). Boots and wheels will keep it open.`;
+  state.log.unshift({ year: state.year, text, tone: "good" });
 }
 
 export function canDispatchBoat(state: GameState): boolean {
@@ -1033,6 +1021,30 @@ export function toggleElderPolicy(state: GameState): LogEntry | null {
     year: state.year,
     text: `${ELDER_FLIP_TO_WORK_LINE} (${MORALE_ELDER_WORK_CHOICE} morale)`,
     tone: "neutral",
+  };
+}
+
+// Anata sacrifice — pause-style food-sink event. Fired from events.ts when the
+// shrine is built; resolves via these handlers from the modal in ui.ts.
+export function acceptAnataSacrifice(state: GameState): LogEntry {
+  state.pendingAnataSacrifice = false;
+  const offered = Math.min(ANATA_SACRIFICE_FOOD_COST, state.food);
+  state.food -= offered;
+  applyMorale(state, ANATA_SACRIFICE_MORALE_GAIN);
+  return {
+    year: state.year,
+    text: `The pyres burn with offerings — bread, salt fish, the season's first stores. The settlement gathers in the shrine's shadow and feels her favour. (-${offered} food, +${ANATA_SACRIFICE_MORALE_GAIN} morale)`,
+    tone: "good",
+  };
+}
+
+export function declineAnataSacrifice(state: GameState): LogEntry {
+  state.pendingAnataSacrifice = false;
+  applyMorale(state, ANATA_SACRIFICE_DECLINE_MORALE);
+  return {
+    year: state.year,
+    text: `The priests are sent away empty-handed. They leave the shrine quietly, but the silence is a kind of judgement. (${ANATA_SACRIFICE_DECLINE_MORALE} morale)`,
+    tone: "bad",
   };
 }
 
