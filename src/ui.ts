@@ -87,8 +87,10 @@ import {
   TradeResource,
   VERSION,
   basketGoldDelta,
+  effectiveSellRates,
   emptyBasket,
 } from "./types";
+import { merchantTierFromReputation } from "./events";
 
 export interface UIHandlers {
   onEndYear: () => void;
@@ -678,7 +680,7 @@ function showTradeModal(state: GameState, onResolve: () => void): void {
 
 function buildTradeHTML(state: GameState, basket: TradeBasket): string {
   const visit = state.merchantVisit!;
-  const delta = basketGoldDelta(basket);
+  const delta = basketGoldDelta(state, basket);
   const valid = canExecuteTradeBasket(state, basket);
 
   const resources: TradeResource[] = ["food", "wood", "stone"];
@@ -708,10 +710,21 @@ function buildTradeHTML(state: GameState, basket: TradeBasket): string {
   const onHandParts = [`<strong>${state.gold}</strong> gold`, `<strong>${state.food}</strong> food`,
     `<strong>${state.wood}</strong> wood`, `<strong>${state.stone}</strong> stone`];
 
+  const tier = merchantTierFromReputation(state.tradeReputation);
+  const tierFlavor: Record<0 | 1 | 2, string> = {
+    0: "Their wagon holds <strong>$CAP$</strong> cargo units. Buying from them frees space for your goods.",
+    1: "A familiar wagonmaster — your port has begun to draw bigger trains. <strong>$CAP$</strong> cargo units today. Buying from them frees space for your goods.",
+    2: "Sailors stack crates on the strand. Cambrera is a regular call now; this captain's hold takes <strong>$CAP$</strong> cargo units. Buying frees space for your goods.",
+  };
+  const dockNote = state.buildings.dock
+    ? " <em>Dockmaster waves them in — your goods fetch a better price at this pier.</em>"
+    : "";
+  const flavor = tierFlavor[tier].replace("$CAP$", String(visit.cargoCapacity)) + dockNote;
+
   return `
     <div id="trade-panel" role="dialog" aria-label="Merchant trade">
       <h2>✦ Travelling Merchants ✦</h2>
-      <p class="trade-flavor">Their wagon holds <strong>${visit.cargoCapacity}</strong> cargo units. Buying from them frees space for your goods.</p>
+      <p class="trade-flavor">${flavor}</p>
       <div class="trade-onhand">
         On hand: ${onHandParts.join(", ")}
       </div>
@@ -896,8 +909,11 @@ function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, visi
   const sellQty = basket.sell[r];
   const buyQty = basket.buy[r];
   const after = held - sellQty + buyQty;
-  const sellRate = TRADE_RATES.sell[r];
+  const sellRate = effectiveSellRates(state)[r];
   const buyRate = TRADE_RATES.buy[r];
+  const sellRateLabel = state.buildings.dock
+    ? `<span class="rate-hint">sell <strong>${sellRate}g</strong> (dock) · buy ${buyRate}g</span>`
+    : `<span class="rate-hint">sell ${sellRate}g · buy ${buyRate}g</span>`;
 
   // Patrician sell cap: sellTotal ≤ cargoCapacity − stockTotal + buyTotal
   const resources: TradeResource[] = ["food", "wood", "stone"];
@@ -907,7 +923,7 @@ function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, visi
   const sellCap = visit.cargoCapacity - stockTotal + buyTotal;
 
   const sellPlusDisabled = sellQty >= held || sellTotal >= sellCap;
-  const goldAfterNextBuy = state.gold + basketGoldDelta(basket) - buyRate;
+  const goldAfterNextBuy = state.gold + basketGoldDelta(state, basket) - buyRate;
   const buyPlusDisabled = buyQty >= visit.sellStock[r] || goldAfterNextBuy < 0;
 
   const stepper = (kind: "sell" | "buy", qty: number, plusDisabled: boolean): string => `
@@ -922,7 +938,7 @@ function basketRow(state: GameState, basket: TradeBasket, r: TradeResource, visi
     <div class="basket-row">
       <span class="basket-res">
         <strong>${r.charAt(0).toUpperCase()}${r.slice(1)}</strong>
-        <span class="rate-hint">sell ${sellRate}g · buy ${buyRate}g</span>
+        ${sellRateLabel}
       </span>
       ${stepper("sell", sellQty, sellPlusDisabled)}
       ${stepper("buy", buyQty, buyPlusDisabled)}

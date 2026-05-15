@@ -86,6 +86,7 @@ export const HELP_SECTIONS: HelpSection[] = [
         <li><strong>Long House</strong> (20w, 15s) — Major civic milestone (gated at 25 pops). +8 morale, attracts more newcomers, unlocks stone roads, houses, and the Governance panel.</li>
         <li><strong>Shrine of Anata</strong> (10w, 15s) — Unlocks after 4 elders have passed. Softens the morale hit from old-age deaths. Once built, the priests may occasionally call for a great offering — accept (food → morale) or decline (morale cost).</li>
         <li><strong>Chicken Coop</strong> (5w, 3s) — Starts a flock that yields eggs each year.</li>
+        <li><strong>Dock</strong> (12w, 15s) — Long House gated. Pilings, plank pier, stone breakwater. Visiting merchants pay you +1 gold per unit sold (food and wood at 2g; stone at 3g). Doesn't affect buy rates.</li>
       </ul>
       <p>Buildings whose requirements aren't met yet are <em>hidden</em> from the panel until the gate is satisfied — you'll see a chronicle line announcing each unlock. Long House is the one always-visible exception (it's the goal you're working toward).</p>
     `,
@@ -177,12 +178,20 @@ export const HELP_SECTIONS: HelpSection[] = [
     title: "Trade & Merchants",
     body: `
       <p>Merchants visit randomly, opening the Trade modal. End Year is blocked while they wait — accept, decline, or trade.</p>
-      <p><strong>Cargo model (Patrician-style)</strong>: merchants arrive with a fixed cargo capacity (8–12 slots). Their stock occupies some slots; <strong>buying from them frees slots</strong> so you can sell more in the same visit.</p>
+      <p><strong>Cargo model (Patrician-style)</strong>: merchants arrive with a fixed cargo capacity. Their stock occupies some slots; <strong>buying from them frees slots</strong> so you can sell more in the same visit.</p>
+      <p><strong>Port reputation</strong>: each completed trade adds to your settlement's reputation. The more often you strike a deal, the bigger the wagons that come:</p>
+      <ul>
+        <li><strong>Tier 0</strong> (0–2 trades): cargo 8–12 slots, single resource at 2–4 units.</li>
+        <li><strong>Tier 1</strong> (3+ trades): cargo 10–15 slots, stock 3–5 units. "Word of your port has spread."</li>
+        <li><strong>Tier 2</strong> (7+ trades): cargo 12–18 slots, stock 4–6 units. Occasionally <strong>two ships</strong> make port the same season.</li>
+      </ul>
+      <p>Declining a visit doesn't count toward reputation — only deals do. The counter never resets.</p>
       <p><strong>Rates</strong>: asymmetric — they take their cut.</p>
       <ul>
         <li>Sell food/wood: 1g · stone: 2g</li>
         <li>Buy food/wood: 2g · stone: 4g</li>
       </ul>
+      <p><strong>Dock</strong>: building the dock adds +1 gold per unit on every <em>sell</em> (food/wood fetch 2g, stone fetches 3g). Buy rates are unchanged — the dock makes you a better seller, not a savvier buyer.</p>
     `,
   },
   {

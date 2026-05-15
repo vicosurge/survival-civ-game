@@ -51,6 +51,8 @@ import type { BuildingId } from "./types";
 export const BUILDING_UNLOCK_TEXT: Partial<Record<BuildingId, string>> = {
   long_house:
     "Twenty-five souls now shelter on Cambrera. Voices around the fire speak of a Long House — a roof tall enough to gather under, a place to decide together.",
+  dock:
+    "With the Long House standing, talk turns to the shore: pilings driven into the surf, a plank pier, a breakwater of dressed stone. A real dock would change how the coastal traders treat us.",
 };
 
 // Town-centre upgrade chronicle lines — emitted the turn each upgrade is

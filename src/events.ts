@@ -8,8 +8,11 @@ import {
   DEPARTURE_TIMINGS,
   GameState,
   LogEntry,
-  MERCHANT_CARGO_RANGE,
-  MERCHANT_STOCK_UNITS,
+  MERCHANT_CARGO_BY_TIER,
+  MERCHANT_STOCK_BY_TIER,
+  MERCHANT_TIER_THRESHOLDS,
+  MERCHANT_TWO_SHIPS_CHANCE,
+  MerchantTier,
   MerchantVisit,
   MORALE_ATTRACT_THRESHOLD,
   MORALE_BANDIT_EMPTY,
@@ -25,11 +28,20 @@ function randInt(lo: number, hi: number): number {
   return Math.floor(Math.random() * (hi - lo + 1)) + lo;
 }
 
-function rollMerchantVisit(): MerchantVisit {
-  const cargoCapacity = randInt(MERCHANT_CARGO_RANGE[0], MERCHANT_CARGO_RANGE[1]);
+export function merchantTierFromReputation(rep: number): MerchantTier {
+  if (rep >= MERCHANT_TIER_THRESHOLDS[1]) return 2;
+  if (rep >= MERCHANT_TIER_THRESHOLDS[0]) return 1;
+  return 0;
+}
+
+export function rollMerchantVisit(state: GameState): MerchantVisit {
+  const tier = merchantTierFromReputation(state.tradeReputation);
+  const [cargoLo, cargoHi] = MERCHANT_CARGO_BY_TIER[tier];
+  const [stockLo, stockHi] = MERCHANT_STOCK_BY_TIER[tier];
+  const cargoCapacity = randInt(cargoLo, cargoHi);
   const stockResources: TradeResource[] = ["food", "wood", "stone"];
   const picked = stockResources[randInt(0, stockResources.length - 1)];
-  const qty = randInt(MERCHANT_STOCK_UNITS[0], MERCHANT_STOCK_UNITS[1]);
+  const qty = randInt(stockLo, stockHi);
   return {
     cargoCapacity,
     sellStock: { food: 0, wood: 0, stone: 0, [picked]: qty },
@@ -78,16 +90,25 @@ const EVENTS: EventDef[] = [
     id: "merchants",
     weight: 9,
     apply: (s) => {
-      s.merchantVisit = rollMerchantVisit();
+      const tier = merchantTierFromReputation(s.tradeReputation);
+      s.merchantVisit = rollMerchantVisit(s);
+      if (tier === 2 && Math.random() < MERCHANT_TWO_SHIPS_CHANCE) {
+        s.merchantSecondShipPending = true;
+      }
       const stock = s.merchantVisit.sellStock;
       const offering = (["food", "wood", "stone"] as const)
         .filter((r) => stock[r] > 0)
         .map((r) => `${stock[r]} ${r}`)
         .join(", ");
       const offeringText = offering ? ` They have ${offering} to sell.` : "";
+      const intros: Record<MerchantTier, string> = {
+        0: "Travelling merchants lay out their wares at the edge of the clearing.",
+        1: "A familiar wagon train rolls into the clearing — word of your port has spread along the coast.",
+        2: "A pair of merchant ships make landfall. Your reputation precedes you up and down the shoreline.",
+      };
       return {
         year: s.year,
-        text: `Travelling merchants lay out their wares at the edge of the clearing.${offeringText} They await your decision before moving on.`,
+        text: `${intros[tier]}${offeringText} They await your decision before moving on.`,
         tone: "neutral",
       };
     },

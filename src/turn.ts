@@ -1,4 +1,4 @@
-import { fireScriptedWave, rollEvent } from "./events";
+import { fireScriptedWave, merchantTierFromReputation, rollEvent, rollMerchantVisit } from "./events";
 import { currentWorkers, exploreFrontier, findWorkerToRemove, hasUndiscoveredFrontier, isInReach } from "./map";
 import {
   ANATA_BUILD_LINE,
@@ -69,9 +69,7 @@ import {
   MAP_H,
   MAP_W,
   MASON_WORKSHOP_QUARRYMAN_BONUS,
-  MERCHANT_CARGO_RANGE,
-  MERCHANT_STOCK_UNITS,
-  MerchantVisit,
+  MerchantTier,
   MORALE_CHILD_FREE_CHOICE,
   MORALE_CHILD_WORK_CHOICE,
   MORALE_FOUNDER_EXTRA,
@@ -635,9 +633,39 @@ export function canExecuteTradeBasket(state: GameState, basket: TradeBasket): bo
   const sellTotal = resources.reduce((s, r) => s + basket.sell[r], 0);
   if (sellTotal > visit.cargoCapacity - stockTotal + buyTotal) return false;
   if (sellTotal + buyTotal === 0) return false;
-  const delta = basketGoldDelta(basket);
+  const delta = basketGoldDelta(state, basket);
   if (state.gold + delta < 0) return false;
   return true;
+}
+
+// Second-ship handoff: at tier 2, the `merchants` event may set the
+// merchantSecondShipPending flag. When the current visit resolves (deal or
+// decline), we immediately re-open the modal with a fresh roll. Reputation is
+// re-read at roll time, so a tier-crossing trade can level up the second ship.
+function maybeArrangeSecondShip(state: GameState, log: LogEntry[]): void {
+  if (!state.merchantSecondShipPending) return;
+  state.merchantSecondShipPending = false;
+  state.merchantVisit = rollMerchantVisit(state);
+  log.push({
+    year: state.year,
+    text: "A second ship makes port the same season. A different captain unpacks his wares beside the first wagon's tracks.",
+    tone: "neutral",
+  });
+}
+
+// Crossing a tier should land as a chronicle beat (single +1 cargo is invisible
+// per-trade, but the threshold crossing is a real moment).
+function noteTierUp(state: GameState, before: MerchantTier, log: LogEntry[]): void {
+  const after = merchantTierFromReputation(state.tradeReputation);
+  if (after === before) return;
+  const beats: Record<MerchantTier, string> = {
+    0: "",
+    1: "Coastal traders have begun naming your settlement on their routes. Their wagons arrive heavier now.",
+    2: "Cambrera is a port of call. Whole ships now plot courses to your harbour — and sometimes two at once.",
+  };
+  if (beats[after]) {
+    log.push({ year: state.year, text: beats[after], tone: "good" });
+  }
 }
 
 export function executeTradeBasket(state: GameState, basket: TradeBasket): LogEntry {
@@ -647,9 +675,12 @@ export function executeTradeBasket(state: GameState, basket: TradeBasket): LogEn
     if (net === 0) continue;
     (state as unknown as Record<string, number>)[r] += net;
   }
-  const delta = basketGoldDelta(basket);
+  const delta = basketGoldDelta(state, basket);
   state.gold += delta;
   state.merchantVisit = null;
+
+  const tierBefore = merchantTierFromReputation(state.tradeReputation);
+  state.tradeReputation += 1;
 
   const parts: string[] = [];
   for (const r of resources) {
@@ -659,32 +690,31 @@ export function executeTradeBasket(state: GameState, basket: TradeBasket): LogEn
     if (basket.buy[r] > 0) parts.push(`bought ${basket.buy[r]} ${r}`);
   }
   const goldSign = delta >= 0 ? `+${delta}` : `${delta}`;
-  return {
+  const dealLog: LogEntry = {
     year: state.year,
     text: `You strike a deal with the merchants: ${parts.join(", ")}. (${goldSign} gold)`,
     tone: delta >= 0 ? "good" : "neutral",
   };
+
+  const extras: LogEntry[] = [];
+  noteTierUp(state, tierBefore, extras);
+  maybeArrangeSecondShip(state, extras);
+  if (extras.length > 0) state.log.unshift(...extras);
+
+  return dealLog;
 }
 
 export function declineTrade(state: GameState): LogEntry {
   state.merchantVisit = null;
-  return {
+  const main: LogEntry = {
     year: state.year,
     text: "You wave the merchants on. They pack their wares and continue up the coast.",
     tone: "neutral",
   };
-}
-
-// Roll a fresh merchant visit — called from events.ts when the merchants event fires.
-export function rollMerchantVisit(): MerchantVisit {
-  const cargoCapacity = randInt(MERCHANT_CARGO_RANGE[0], MERCHANT_CARGO_RANGE[1]);
-  const stockResources: TradeResource[] = ["food", "wood", "stone"];
-  const picked = stockResources[randInt(0, stockResources.length - 1)];
-  const qty = randInt(MERCHANT_STOCK_UNITS[0], MERCHANT_STOCK_UNITS[1]);
-  return {
-    cargoCapacity,
-    sellStock: { food: 0, wood: 0, stone: 0, [picked]: qty },
-  };
+  const extras: LogEntry[] = [];
+  maybeArrangeSecondShip(state, extras);
+  if (extras.length > 0) state.log.unshift(...extras);
+  return main;
 }
 
 // Logic for building the chicken coop — initialises the flock.
@@ -705,6 +735,9 @@ export function buildBlockerReason(state: GameState, id: BuildingId): string | n
   }
   if (id === "shrine_of_anata" && state.oldAgeDeathsTotal < ANATA_DEATH_TRIGGER) {
     return `Needs ${ANATA_DEATH_TRIGGER} elders to have passed (${state.oldAgeDeathsTotal} so far).`;
+  }
+  if (id === "dock" && !state.buildings.long_house) {
+    return "Requires the Long House.";
   }
   const cost = BUILDINGS[id].cost;
   const short: string[] = [];
@@ -1117,7 +1150,7 @@ export function isBuildingHidden(state: GameState, id: BuildingId): boolean {
 // unlock line the year each gate flips from blocked to satisfiable (resource
 // shortages don't count — that's not "unlocked," that's "saving up").
 function checkBuildingUnlocks(state: GameState, year: number): void {
-  const ids: BuildingId[] = ["long_house", "shrine_of_anata"];
+  const ids: BuildingId[] = ["long_house", "shrine_of_anata", "dock"];
   for (const id of ids) {
     if (state.unlockedBuildings[id]) continue;
     if (state.buildings[id]) {

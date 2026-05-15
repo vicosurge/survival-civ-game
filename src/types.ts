@@ -1,4 +1,4 @@
-export const VERSION = "v0.7.5";
+export const VERSION = "v0.8";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
@@ -88,7 +88,7 @@ export interface ScriptedWave {
 export type TradeAction = "sell" | "buy";
 export type TradeResource = "food" | "wood" | "stone";
 
-export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "lumber_camp" | "mason_workshop" | "long_house" | "shrine_of_anata" | "chicken_coop";
+export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "lumber_camp" | "mason_workshop" | "long_house" | "shrine_of_anata" | "chicken_coop" | "dock";
 
 // Town-centre upgrades — repeatable infrastructure layer that lives outside the
 // one-time BUILDINGS table. The Communal Garden + Workshop Yard are tier-1
@@ -370,6 +370,8 @@ export interface GameState {
   boat: Boat;
   scriptedWaves: ScriptedWave[];
   merchantVisit: MerchantVisit | null;  // pending merchant visit; blocks end-year
+  tradeReputation: number;              // lifetime count of completed merchant trades; drives cargo tier
+  merchantSecondShipPending: boolean;   // tier-2 only: a second merchant arrives after the current one resolves
   pendingRefugees: { count: number; text: string; year: number } | null;
   pendingAnataSacrifice: boolean;  // priests have asked for an offering to Anata; blocks end-year
   elderTransitions: number;     // lifetime count of adult→elder crossings
@@ -524,17 +526,46 @@ export const MORALE_CHILD_FREE_CHOICE = 3;
 export const SCRIPTED_WAVE_MIN_GAP = 3;
 export const SCRIPTED_WAVE_REFUGEES = 2;
 
-// Merchant trade rates — asymmetric so there's a real choice.
+// Merchant trade rates — asymmetric so there's a real choice. Sell rates are the
+// *baseline*; the Dock building adds DOCK_SELL_BONUS gold/unit to each (see
+// effectiveSellRates). Buy rates are unchanged by the dock: better seller, not
+// a savvier buyer. Don't equalise sell/buy without rethinking the no-arbitrage
+// design (food/wood become break-even with the buy rate when the dock is up).
 export const TRADE_RATES: Record<TradeAction, Record<TradeResource, number>> = {
   sell: { food: 1, wood: 1, stone: 2 },
   buy:  { food: 2, wood: 2, stone: 4 },
 };
 
-// Patrician cargo model: merchants arrive with a wagon of capacity MERCHANT_CARGO_RANGE
-// slots. Their sellStock occupies some slots; buying from them frees capacity so
-// the player can sell more. Replaces the old flat TRADE_MAX_PER_VISIT = 5 cap.
-export const MERCHANT_CARGO_RANGE: [number, number] = [8, 12];
-export const MERCHANT_STOCK_UNITS: [number, number] = [2, 4];
+// Dock — Long House gated building that lifts the player's sell rates by +1/unit.
+export const DOCK_SELL_BONUS = 1;
+
+// Patrician cargo model: merchants arrive with a wagon whose capacity scales
+// with the settlement's trade reputation. Tier-keyed instead of flat so each
+// crossing is a felt chronicle beat (+1 cargo wouldn't register). A completed
+// trade increments state.tradeReputation; declined visits do not.
+//   Tier 0 (0–2 trades): cargo [8,12], stock [2,4] — baseline
+//   Tier 1 (3–6 trades): cargo [10,15], stock [3,5]
+//   Tier 2 (7+ trades):  cargo [12,18], stock [4,6], rare two-ships variant
+export type MerchantTier = 0 | 1 | 2;
+export const MERCHANT_TIER_THRESHOLDS: [number, number] = [3, 7];
+export const MERCHANT_CARGO_BY_TIER: Record<MerchantTier, [number, number]> = {
+  0: [8, 12],
+  1: [10, 15],
+  2: [12, 18],
+};
+export const MERCHANT_STOCK_BY_TIER: Record<MerchantTier, [number, number]> = {
+  0: [2, 4],
+  1: [3, 5],
+  2: [4, 6],
+};
+// Tier 2 only: chance that a merchant visit kicks off a second back-to-back
+// visit in the same year. Triggered as a one-shot pending flag so the existing
+// modal pipeline naturally re-opens after the first deal closes.
+export const MERCHANT_TWO_SHIPS_CHANCE = 0.25;
+// Legacy aliases kept for downstream code that still imports the flat ranges
+// (the tier-0 values are the baseline).
+export const MERCHANT_CARGO_RANGE = MERCHANT_CARGO_BY_TIER[0];
+export const MERCHANT_STOCK_UNITS = MERCHANT_STOCK_BY_TIER[0];
 
 export type TradeBasket = Record<TradeAction, Record<TradeResource, number>>;
 
@@ -552,11 +583,23 @@ export function basketTotal(basket: TradeBasket): number {
   );
 }
 
-export function basketGoldDelta(basket: TradeBasket): number {
+// Per-game effective sell rates — baseline + DOCK_SELL_BONUS when the dock is built.
+// Buy rates are dock-invariant, so the caller can reach for TRADE_RATES.buy directly.
+export function effectiveSellRates(state: GameState): Record<TradeResource, number> {
+  const bonus = state.buildings.dock ? DOCK_SELL_BONUS : 0;
+  return {
+    food: TRADE_RATES.sell.food + bonus,
+    wood: TRADE_RATES.sell.wood + bonus,
+    stone: TRADE_RATES.sell.stone + bonus,
+  };
+}
+
+export function basketGoldDelta(state: GameState, basket: TradeBasket): number {
   let delta = 0;
   const resources: TradeResource[] = ["food", "wood", "stone"];
+  const sellRates = effectiveSellRates(state);
   for (const r of resources) {
-    delta += basket.sell[r] * TRADE_RATES.sell[r];
+    delta += basket.sell[r] * sellRates[r];
     delta -= basket.buy[r]  * TRADE_RATES.buy[r];
   }
   return delta;
@@ -673,6 +716,12 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     description: `Starts a flock of ${CHICKEN_STARTING_FLOCK} chickens. Eggs yield food each year; the flock grows quickly and surplus birds are culled automatically at the cap.`,
     cost: { wood: 5, stone: 3 },
   },
+  dock: {
+    id: "dock",
+    name: "Dock",
+    description: "Pilings driven into the surf, a plank pier, a stone breakwater. Visiting merchants pay +1 gold per unit sold (food and wood both fetch 2 gold; stone fetches 3).",
+    cost: { wood: 12, stone: 15 },
+  },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v25";
+export const SAVE_KEY = "isle-of-cambrera-save-v26";

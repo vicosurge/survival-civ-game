@@ -181,6 +181,7 @@ One-time, `types.ts:BUILDINGS`, `state.buildings: Record<BuildingId, boolean>`. 
 | Long House | 20 wood, 15 stone | 25 pops | +8 morale; newcomers ×3 (with attract); unlocks stone roads + houses + Governance | — |
 | Shrine of Anata | 10 wood, 15 stone | 4 old-age deaths | Softens old-age morale (2→1, founder 3→2); enables `anata_sacrifice` event | — |
 | Chicken Coop | 5 wood, 3 stone | — | Flock 5; +0.5 food/bird/yr; auto-cull at cap=20 | — |
+| Dock | 12 wood, 15 stone | Long House | +`DOCK_SELL_BONUS = 1` gold/unit on merchant sells (food/wood 2g, stone 3g); buy rates unchanged | — |
 
 **Houses** (repeatable, not in BUILDINGS): `HOUSE_COST_BASE = { wood: 8, stone: 3 }` for the first; each subsequent house costs `+HOUSE_COST_INCREMENT = { wood: 2, stone: 1 }` over the previous via `nextHouseCost(state)`. +`HOUSE_CAPACITY = 6` cap, +`HOUSE_FOOD_YIELD = 2` food/yr garden plot. Long House gate. API: `canBuildHouse`/`buildHouse`/`houseBlockerReason`/`nextHouseCost`. **Don't flatten the cost** — escalation prevents the late-game "grind wood for unbounded huts" loop.
 
@@ -296,17 +297,33 @@ Reflavored from "highland raiders." Bandits are now war refugees from the Exarum
 
 `merchants` event sets `state.merchantVisit: MerchantVisit | null`. `maybeShowTradeModal` (called from `redraw()`) opens `#trade-overlay`.
 
-**`MerchantVisit`:** `{ cargoCapacity, sellStock }`. `rollMerchantVisit()` in events.ts (inlined to avoid circular imports). Cargo `MERCHANT_CARGO_RANGE = [8,12]`; one random resource at `MERCHANT_STOCK_UNITS = [2,4]`.
+**`MerchantVisit`:** `{ cargoCapacity, sellStock }`. `rollMerchantVisit(state)` in events.ts. Cargo and stock ranges are tier-keyed, not flat.
+
+**Trade reputation tiers.** `state.tradeReputation` counts completed trades (declines and empty baskets don't count — counter rewards engaging, not getting lucky). `merchantTierFromReputation(rep)` maps it to a tier; both events.ts (initial roll) and turn.ts (second-ship handoff) read it.
+
+| Tier | Trades completed | Cargo range | Stock units | Notes |
+|---|---|---|---|---|
+| 0 | 0–2 | `MERCHANT_CARGO_BY_TIER[0] = [8, 12]` | `[2, 4]` | Baseline |
+| 1 | 3–6 | `[10, 15]` | `[3, 5]` | Chronicle beat on first crossing |
+| 2 | 7+ | `[12, 18]` | `[4, 6]` | Chronicle beat + rare "two ships" variant |
+
+Tier thresholds in `MERCHANT_TIER_THRESHOLDS = [3, 7]`. **Don't smooth-scale per-trade** (+1 cargo invisible) — keep the step function.
+
+**Two-ships variant** (tier 2 only): when `merchants` fires, ~`MERCHANT_TWO_SHIPS_CHANCE = 0.25` chance to set `state.merchantSecondShipPending = true`. After the first visit resolves (deal *or* decline), `maybeArrangeSecondShip` in turn.ts re-rolls `state.merchantVisit`, clears the flag, pushes a "second ship makes port the same season" log entry. The existing `maybeShowTradeModal` redraw loop handles the rest — no async needed.
+
+**Reputation increment** is in `executeTradeBasket` only. `declineTrade` does not advance the counter (but the second ship still arrives if pending — they came regardless of the first deal).
 
 **Trade basket:** `sellTotal ≤ cargoCapacity − stockTotal + buyTotal`. Buying frees slots so player can sell more in the same visit. Resources: food, wood, stone.
 
 **Rates** (`TRADE_RATES`): sell food/wood 1g, stone 2g; buy food/wood 2g, stone 4g. Asymmetric.
 
+**Dock building (`DOCK_SELL_BONUS = 1`):** Long House gated, 12 wood / 15 stone. When `state.buildings.dock === true`, `effectiveSellRates(state)` adds +1g/unit to every sell (food/wood become 2g, stone 3g). Buy rates are unchanged — better seller, not savvier buyer. `basketGoldDelta(state, basket)` reads the effective rates; **the state parameter is required** — don't reintroduce a state-less version.
+
 **End Year blocked while `merchantVisit !== null`** ("Merchants waiting…"). Decline costs nothing — tension is "spend now or wait for cheaper."
 
 **Object-based pause, not async.** Saves stay plain JSON. Future pause-style events (raid-or-tribute) follow same nullable-field pattern.
 
-**Circular dep guard:** `rollMerchantVisit` lives in events.ts (with local `randInt`). events.ts imports from turn.ts (`fireScriptedWave`/`rollEvent`); **any reverse import creates a cycle.** Keep boundary clean.
+**Circular dep guard:** `rollMerchantVisit` and `merchantTierFromReputation` are **exported from events.ts**. turn.ts imports from events.ts (`fireScriptedWave`/`rollEvent`/`rollMerchantVisit`/`merchantTierFromReputation`); **events.ts must never import from turn.ts.** Keep boundary clean.
 
 ### Scripted Exarum-survivor waves
 
