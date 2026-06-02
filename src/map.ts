@@ -2,6 +2,7 @@ import {
   BASE_REACH,
   CAPACITY_RANGE,
   DIRT_PATH_REACH,
+  DOCK_WATER_REACH,
   FERTILE_GRASS_CHANCE,
   FISH_RICH_CHANCE,
   GameState,
@@ -276,6 +277,13 @@ function cheby(ax: number, ay: number, bx: number, by: number): number {
 // tiles — they're highways, not just packed earth.
 export function isInReach(state: GameState, x: number, y: number): boolean {
   if (cheby(x, y, state.town.x, state.town.y) <= BASE_REACH) return true;
+  // The Dock pushes fisher reach one ring further out — beach/river only, so only
+  // fishers benefit (no other job works water).
+  if (state.buildings.dock) {
+    const terrain = state.tiles[y][x].terrain;
+    if ((terrain === "beach" || terrain === "river") &&
+        cheby(x, y, state.town.x, state.town.y) <= DOCK_WATER_REACH) return true;
+  }
   for (let ty = 0; ty < MAP_H; ty++) {
     for (let tx = 0; tx < MAP_W; tx++) {
       const t = state.tiles[ty][tx];

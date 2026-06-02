@@ -1,4 +1,4 @@
-export const VERSION = "v0.8";
+export const VERSION = "v0.8.5";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
@@ -484,6 +484,7 @@ export const RESERVE_RANGE: Record<"forest" | "stone", [number, number]> = {
 
 export const BASE_REACH = 2;       // tiles within this Chebyshev distance of town are always in reach
 export const WORKED_REACH = 1;     // additionally, tiles within this distance of any worked tile are in reach
+export const DOCK_WATER_REACH = 3; // with the Dock, beach/river tiles this close to town are in reach — fishers cast further along the shore and upriver
 export const FALLOW_REVERT_YEARS = 2;
 export const CULTIVATION_YEARS = 1;
 
@@ -683,7 +684,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   hunting_lodge: {
     id: "hunting_lodge",
     name: "Hunting Lodge",
-    description: "Drying racks, stretched hides, a pit for rendering fat. Each hunter yields +0.5 food/year — while the forest lasts.",
+    description: "Your hunters already work the forest without it. The lodge adds drying racks, stretched hides, and a rendering pit — +0.5 food per hunter/year, while the forest lasts.",
     cost: { wood: 10 },
   },
   lumber_camp: {
@@ -719,7 +720,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   dock: {
     id: "dock",
     name: "Dock",
-    description: "Pilings driven into the surf, a plank pier, a stone breakwater. Visiting merchants pay +1 gold per unit sold (food and wood both fetch 2 gold; stone fetches 3).",
+    description: "Pilings driven into the surf, a plank pier, a stone breakwater. Visiting merchants pay +1 gold per unit sold (food and wood both fetch 2 gold; stone fetches 3), and fishers can cast further along the shore and upriver.",
     cost: { wood: 12, stone: 15 },
   },
 };

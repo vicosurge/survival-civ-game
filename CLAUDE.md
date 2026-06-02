@@ -181,7 +181,7 @@ One-time, `types.ts:BUILDINGS`, `state.buildings: Record<BuildingId, boolean>`. 
 | Long House | 20 wood, 15 stone | 25 pops | +8 morale; newcomers ×3 (with attract); unlocks stone roads + houses + Governance | — |
 | Shrine of Anata | 10 wood, 15 stone | 4 old-age deaths | Softens old-age morale (2→1, founder 3→2); enables `anata_sacrifice` event | — |
 | Chicken Coop | 5 wood, 3 stone | — | Flock 5; +0.5 food/bird/yr; auto-cull at cap=20 | — |
-| Dock | 12 wood, 15 stone | Long House | +`DOCK_SELL_BONUS = 1` gold/unit on merchant sells (food/wood 2g, stone 3g); buy rates unchanged | — |
+| Dock | 12 wood, 15 stone | Long House | +`DOCK_SELL_BONUS = 1` gold/unit on merchant sells (food/wood 2g, stone 3g); buy rates unchanged. Also extends fisher reach (`DOCK_WATER_REACH`) | — |
 
 **Houses** (repeatable, not in BUILDINGS): `HOUSE_COST_BASE = { wood: 8, stone: 3 }` for the first; each subsequent house costs `+HOUSE_COST_INCREMENT = { wood: 2, stone: 1 }` over the previous via `nextHouseCost(state)`. +`HOUSE_CAPACITY = 6` cap, +`HOUSE_FOOD_YIELD = 2` food/yr garden plot. Long House gate. API: `canBuildHouse`/`buildHouse`/`houseBlockerReason`/`nextHouseCost`. **Don't flatten the cost** — escalation prevents the late-game "grind wood for unbounded huts" loop.
 
@@ -317,7 +317,10 @@ Tier thresholds in `MERCHANT_TIER_THRESHOLDS = [3, 7]`. **Don't smooth-scale per
 
 **Rates** (`TRADE_RATES`): sell food/wood 1g, stone 2g; buy food/wood 2g, stone 4g. Asymmetric.
 
-**Dock building (`DOCK_SELL_BONUS = 1`):** Long House gated, 12 wood / 15 stone. When `state.buildings.dock === true`, `effectiveSellRates(state)` adds +1g/unit to every sell (food/wood become 2g, stone 3g). Buy rates are unchanged — better seller, not savvier buyer. `basketGoldDelta(state, basket)` reads the effective rates; **the state parameter is required** — don't reintroduce a state-less version.
+**Dock building (`DOCK_SELL_BONUS = 1`):** Long House gated, 12 wood / 15 stone. Two effects — a trade bonus and a fishing-reach bonus.
+
+- **Trade:** when `state.buildings.dock === true`, `effectiveSellRates(state)` adds +1g/unit to every sell (food/wood become 2g, stone 3g). Buy rates are unchanged — better seller, not savvier buyer. `basketGoldDelta(state, basket)` reads the effective rates; **the state parameter is required** — don't reintroduce a state-less version.
+- **Fishing reach (`DOCK_WATER_REACH = 3`):** a clause in `isInReach` (map.ts) brings **beach/river tiles only** within `DOCK_WATER_REACH` of town into reach once the dock is built — the pier lets fishers cast one ring further along the coast and upriver. Water-tiles-only, so only fishers benefit (no other job works water). Propagates automatically through `reachableTiles`/`findEligibleTile`/`totalReachableCapacity` — no save-shape change.
 
 **End Year blocked while `merchantVisit !== null`** ("Merchants waiting…"). Decline costs nothing — tension is "spend now or wait for cheaper."
 

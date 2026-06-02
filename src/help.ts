@@ -86,7 +86,7 @@ export const HELP_SECTIONS: HelpSection[] = [
         <li><strong>Long House</strong> (20w, 15s) — Major civic milestone (gated at 25 pops). +8 morale, attracts more newcomers, unlocks stone roads, houses, and the Governance panel.</li>
         <li><strong>Shrine of Anata</strong> (10w, 15s) — Unlocks after 4 elders have passed. Softens the morale hit from old-age deaths. Once built, the priests may occasionally call for a great offering — accept (food → morale) or decline (morale cost).</li>
         <li><strong>Chicken Coop</strong> (5w, 3s) — Starts a flock that yields eggs each year.</li>
-        <li><strong>Dock</strong> (12w, 15s) — Long House gated. Pilings, plank pier, stone breakwater. Visiting merchants pay you +1 gold per unit sold (food and wood at 2g; stone at 3g). Doesn't affect buy rates.</li>
+        <li><strong>Dock</strong> (12w, 15s) — Long House gated. Pilings, plank pier, stone breakwater. Two benefits: visiting merchants pay you +1 gold per unit sold (food and wood at 2g; stone at 3g), and your fishers reach one ring further out — beach and river tiles within 3 tiles of town become workable. Doesn't affect buy rates.</li>
       </ul>
       <p>Buildings whose requirements aren't met yet are <em>hidden</em> from the panel until the gate is satisfied — you'll see a chronicle line announcing each unlock. Long House is the one always-visible exception (it's the goal you're working toward).</p>
     `,
@@ -191,7 +191,7 @@ export const HELP_SECTIONS: HelpSection[] = [
         <li>Sell food/wood: 1g · stone: 2g</li>
         <li>Buy food/wood: 2g · stone: 4g</li>
       </ul>
-      <p><strong>Dock</strong>: building the dock adds +1 gold per unit on every <em>sell</em> (food/wood fetch 2g, stone fetches 3g). Buy rates are unchanged — the dock makes you a better seller, not a savvier buyer.</p>
+      <p><strong>Dock</strong>: building the dock adds +1 gold per unit on every <em>sell</em> (food/wood fetch 2g, stone fetches 3g). Buy rates are unchanged — the dock makes you a better seller, not a savvier buyer. It also extends fisher reach (see Buildings).</p>
     `,
   },
   {
