@@ -1,7 +1,9 @@
 {
   "name": "civ-game",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.8.5",
+  "author": "Vicente Muñoz",
+  "license": "GPL-2.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",
