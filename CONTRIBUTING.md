@@ -58,7 +58,7 @@ The creative disciplines are the biggest open frontier — see the **Production 
 
 - Match the tone: **low fantasy, medieval → renaissance, magic fading**, and the retro 2000s browser-game feel.
 - Add yourself and your work to **`CREDITS.md`**, with the license your asset ships under.
-- The asset pipeline (where files live, formats, how they wire into the build) is being formalized — ask before dropping large binaries into the repo.
+- Follow **[`docs/ASSET_PIPELINE.md`](docs/ASSET_PIPELINE.md)** — where files live, naming, formats, and how they wire into the build. **Only finished assets go in the repo**; source files (`.aseprite`, `.wav`, DAW projects) live on the shared drive. Ask before dropping large binaries in.
 
 ## Reporting bugs and feedback
 
