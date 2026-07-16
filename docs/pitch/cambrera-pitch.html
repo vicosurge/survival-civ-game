@@ -1,0 +1,627 @@
+<title>Isle of Cambrera — About &amp; Call for Volunteers</title>
+<style>
+  :root {
+    --paper:      #ece0c8;
+    --paper-raised:#f4ecd9;
+    --paper-sunk: #e2d4b8;
+    --ink:        #2c2118;
+    --ink-soft:   #6c5d47;
+    --gold:       #a9781f;
+    --gold-bright:#b5872e;
+    --forest:     #4f6a4a;
+    --need:       #a8482e;
+    --need-bg:    rgba(168,72,46,0.10);
+    --open-bg:    rgba(79,106,74,0.12);
+    --line:       rgba(44,33,24,0.16);
+    --line-soft:  rgba(44,33,24,0.09);
+
+    --serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Times New Roman", serif;
+    --mono: "Courier New", ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace;
+
+    --measure: 63ch;
+    --wrap: 1080px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:       #171310;
+      --paper-raised:#211a13;
+      --paper-sunk:  #12100c;
+      --ink:         #ecdfc7;
+      --ink-soft:    #a2906f;
+      --gold:        #d9a94a;
+      --gold-bright: #e8bd63;
+      --forest:      #86a874;
+      --need:        #d97a58;
+      --need-bg:     rgba(217,122,88,0.12);
+      --open-bg:     rgba(134,168,116,0.13);
+      --line:        rgba(236,223,199,0.15);
+      --line-soft:   rgba(236,223,199,0.08);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper:#ece0c8; --paper-raised:#f4ecd9; --paper-sunk:#e2d4b8;
+    --ink:#2c2118; --ink-soft:#6c5d47; --gold:#a9781f; --gold-bright:#b5872e;
+    --forest:#4f6a4a; --need:#a8482e; --need-bg:rgba(168,72,46,0.10);
+    --open-bg:rgba(79,106,74,0.12); --line:rgba(44,33,24,0.16); --line-soft:rgba(44,33,24,0.09);
+  }
+  :root[data-theme="dark"] {
+    --paper:#171310; --paper-raised:#211a13; --paper-sunk:#12100c;
+    --ink:#ecdfc7; --ink-soft:#a2906f; --gold:#d9a94a; --gold-bright:#e8bd63;
+    --forest:#86a874; --need:#d97a58; --need-bg:rgba(217,122,88,0.12);
+    --open-bg:rgba(134,168,116,0.13); --line:rgba(236,223,199,0.15); --line-soft:rgba(236,223,199,0.08);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 80% -10%, rgba(169,120,31,0.08), transparent 60%),
+      radial-gradient(900px 500px at 0% 105%, rgba(79,106,74,0.07), transparent 55%);
+  }
+
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 clamp(1.1rem, 4vw, 2.6rem); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 0.9rem;
+    display: block;
+  }
+
+  h1, h2, h3 { font-family: var(--serif); text-wrap: balance; font-weight: 700; line-height: 1.12; }
+
+  /* ---------- Hero ---------- */
+  .hero { padding: clamp(3rem, 8vw, 5.5rem) 0 clamp(2rem, 5vw, 3.5rem); }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    gap: clamp(1.8rem, 5vw, 3.4rem);
+    align-items: center;
+  }
+  .hero h1 {
+    font-size: clamp(2.9rem, 7vw, 4.6rem);
+    letter-spacing: -0.015em;
+    margin: 0 0 1.1rem;
+  }
+  .hero h1 .swash { color: var(--gold); font-style: italic; }
+  .lede { font-size: clamp(1.1rem, 2.4vw, 1.3rem); color: var(--ink); max-width: 34ch; margin: 0 0 1.8rem; }
+  .lede b { color: var(--gold); font-weight: 700; }
+
+  .cta-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+  .btn {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    letter-spacing: 0.05em;
+    text-decoration: none;
+    padding: 0.7rem 1.15rem;
+    border-radius: 2px;
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    transition: transform 0.12s ease, background 0.18s ease, border-color 0.18s ease;
+  }
+  .btn-primary { background: var(--gold); color: var(--paper-sunk); border: 1px solid var(--gold); font-weight: 700; }
+  :root[data-theme="dark"] .btn-primary, .btn-primary { color: #171310; }
+  .btn-primary:hover { background: var(--gold-bright); transform: translateY(-1px); }
+  .btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+
+  .map-frame {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--paper-sunk);
+    padding: 10px;
+    box-shadow: 0 1px 0 var(--line-soft), 0 22px 44px -30px rgba(20,14,8,0.6);
+  }
+  .map-frame canvas { display: block; width: 100%; height: auto; border-radius: 2px; }
+  .map-cap {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em;
+    color: var(--ink-soft); text-transform: uppercase;
+    margin-top: 8px; display: flex; justify-content: space-between; gap: 1rem;
+  }
+
+  /* ---------- Section scaffolding ---------- */
+  .section { padding: clamp(2.6rem, 6vw, 4.4rem) 0; border-top: 1px solid var(--line); }
+  .section-head { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 2.2rem; }
+  .section-num {
+    font-family: var(--mono); font-weight: 700; font-size: 0.95rem;
+    color: var(--gold); letter-spacing: 0.05em;
+    border: 1px solid var(--line); border-radius: 2px; padding: 0.28rem 0.6rem;
+    white-space: nowrap; line-height: 1;
+  }
+  .section-head h2 { font-size: clamp(1.7rem, 4vw, 2.5rem); margin: 0; }
+
+  .about-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: clamp(1.6rem, 4vw, 3rem); align-items: start; }
+  .prose p { max-width: var(--measure); margin: 0 0 1.15rem; }
+  .prose p:last-child { margin-bottom: 0; }
+  .prose strong { color: var(--gold); font-weight: 700; }
+
+  /* chronicle callout — echoes the in-game log */
+  .chronicle {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.6;
+    background: var(--paper-sunk);
+    border-left: 3px solid var(--forest);
+    border-radius: 0 3px 3px 0;
+    padding: 0.95rem 1.15rem;
+    margin: 1.6rem 0 0;
+    color: var(--ink);
+    max-width: var(--measure);
+  }
+  .chronicle .yr { color: var(--gold); display: block; margin-bottom: 0.4rem; letter-spacing: 0.08em; }
+
+  /* spec sheet */
+  .spec {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1.3rem 1.4rem;
+    position: sticky; top: 1.2rem;
+  }
+  .spec h3 {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 0 0 1rem; font-weight: 700;
+  }
+  .spec dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.55rem 1rem; font-family: var(--mono); font-size: 0.82rem; }
+  .spec dt { color: var(--ink-soft); white-space: nowrap; }
+  .spec dd { margin: 0; text-align: right; color: var(--ink); }
+  .spec dd b { color: var(--gold); font-weight: 700; }
+  .spec .live { color: var(--forest); }
+
+  /* pillars */
+  .pillars { margin-top: 2.6rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .pillar { background: var(--paper); padding: 1.15rem 1.25rem; }
+  .pillar .k { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); display: block; margin-bottom: 0.4rem; }
+  .pillar p { margin: 0; font-size: 0.95rem; line-height: 1.5; }
+
+  /* ---------- Volunteers ---------- */
+  .vol-intro { max-width: var(--measure); margin: 0 0 2rem; font-size: 1.08rem; }
+  .roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 1rem; }
+  .role {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1.2rem 1.25rem;
+    display: flex; flex-direction: column; gap: 0.6rem;
+  }
+  .role.hot { border-color: color-mix(in srgb, var(--need) 45%, var(--line)); }
+  .role-top { display: flex; align-items: center; gap: 0.7rem; }
+  .role-ic {
+    width: 38px; height: 38px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--gold) 16%, transparent);
+    color: var(--gold);
+  }
+  .role.hot .role-ic { background: var(--need-bg); color: var(--need); }
+  .role-ic svg { width: 20px; height: 20px; }
+  .role h3 { font-size: 1.12rem; margin: 0; }
+  .role p { margin: 0; font-size: 0.92rem; line-height: 1.5; color: var(--ink); }
+  .role .gap { font-size: 0.86rem; color: var(--ink-soft); }
+  .role .gap b { color: var(--ink); font-weight: 700; }
+  .chip {
+    align-self: flex-start; margin-top: auto;
+    font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 0.28rem 0.55rem; border-radius: 2px; font-weight: 700;
+  }
+  .chip.need { background: var(--need-bg); color: var(--need); }
+  .chip.open { background: var(--open-bg); color: var(--forest); }
+
+  /* how to contribute */
+  .howto {
+    margin-top: 2.4rem;
+    background: var(--paper-sunk);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: clamp(1.4rem, 3vw, 2rem);
+  }
+  .howto h3 { font-size: 1.3rem; margin: 0 0 1.2rem; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.3rem 1.8rem; }
+  .step { display: flex; gap: 0.8rem; align-items: flex-start; }
+  .step .n { font-family: var(--mono); color: var(--gold); font-weight: 700; font-size: 0.95rem; line-height: 1.5; }
+  .step p { margin: 0; font-size: 0.92rem; line-height: 1.5; }
+  .step p b { color: var(--ink); }
+  .step code { font-family: var(--mono); font-size: 0.85em; background: var(--paper); padding: 0.05em 0.35em; border-radius: 2px; border: 1px solid var(--line-soft); }
+
+  footer { border-top: 1px solid var(--line); padding: 2.2rem 0 3rem; }
+  .foot-row { display: flex; flex-wrap: wrap; gap: 0.5rem 1.6rem; align-items: center; font-family: var(--mono); font-size: 0.78rem; color: var(--ink-soft); }
+  .foot-row a { color: var(--gold); text-decoration: none; }
+  .foot-row a:hover { text-decoration: underline; }
+  .foot-row .sep { color: var(--line); }
+
+  a:focus-visible, .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 2px; }
+
+  @media (max-width: 860px) {
+    .hero-grid, .about-grid { grid-template-columns: 1fr; }
+    .spec { position: static; }
+    .pillars { grid-template-columns: 1fr; }
+    .hero { padding-top: 2.4rem; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(14px); animation: rise 0.7s cubic-bezier(0.22,0.61,0.36,1) forwards; }
+    .reveal.d1 { animation-delay: 0.08s; }
+    .reveal.d2 { animation-delay: 0.16s; }
+    @keyframes rise { to { opacity: 1; transform: none; } }
+  }
+</style>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="reveal">
+        <span class="eyebrow">Single-player · turn-based · browser · v0.8.5</span>
+        <h1>Isle of<br><span class="swash">Cambrera</span></h1>
+        <p class="lede">Refugees of a continent-destroying war make landfall on a small northern island — and try to build something that lasts. One turn is <b>one year</b>. Every patch of land matters.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://cambrera.digimente.xyz" target="_blank" rel="noopener">▶ Play the alpha</a>
+          <a class="btn btn-ghost" href="https://github.com/vicosurge/survival-civ-game" target="_blank" rel="noopener">View the repository</a>
+        </div>
+      </div>
+      <div class="reveal d1">
+        <div class="map-frame">
+          <canvas id="island" width="720" height="560" role="img" aria-label="Stylised top-down map of the island of Cambrera: a central mountain range dividing forest and grassland, a river running to the southern coast, and the settlement on the southern shore."></canvas>
+          <div class="map-cap"><span>Cambrera — southern settlement</span><span>~10 km² · 1 tile ≈ 316 m</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== SECTION 1 ===================== -->
+<section class="section" id="about">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="section-num">01</span>
+      <h2>About the game</h2>
+    </div>
+
+    <div class="about-grid">
+      <div class="prose">
+        <p><strong>Isle of Cambrera</strong> is a single-player, turn-based 2D civ-builder that runs in the browser. You land as a handful of settlers — five adults and two children off a small medieval ship — fleeing the war that destroyed the continent of Exarum, and you grow a settlement on the northern island of Cambrera toward a kingdom. There is no hard win condition; the soft goal is simply to endure and to grow.</p>
+        <p>Each year you allocate a small pool of workers across <strong>farming, hunting, fishing, woodcutting, quarrying and scouting</strong>, then raise buildings that give your surplus somewhere to go and counter specific threats — a granary against locusts, a palisade against bandits, a long house that unlocks houses, roads and civic governance. Pops age through <strong>child, adult and elder</strong> phases, so growth has to be earned: a newborn is a four-year productivity debt before it pays back. Fertile tiles matter, morale gates growth, merchants bargain over a wagon of cargo, and a <strong>chronicle</strong> of the years accumulates down the side of the screen.</p>
+        <p>The tone is deliberately <strong>low-fantasy</strong> — classical creatures exist but magic is fading, and the technological arc runs medieval to renaissance. Its lineage is openly retro: the allocate-and-live-with-it loop of 1968's <em>Hamurabi</em>, the build-a-civilisation arc of <em>Civilization</em>, and the "even poor land is worth something" ethos of <em>Master of Orion</em>. Population is kept abstract in the style of <em>Stellaris</em> — the UI never commits to a literal headcount.</p>
+        <div class="chronicle">
+          <span class="yr">— Year 1 —</span>
+          Five adults and two children make landfall on the southern cove of Cambrera. The Balinger is hauled ashore; the first ground is broken before winter.
+        </div>
+      </div>
+
+      <aside class="spec" aria-label="Technical details">
+        <h3>Technical details</h3>
+        <dl>
+          <dt>Platform</dt><dd>Browser <b>(desktop-first)</b></dd>
+          <dt>Language</dt><dd>TypeScript <b>(strict)</b></dd>
+          <dt>Build</dt><dd>Vite 5</dd>
+          <dt>Engine</dt><dd>None — hand-rolled</dd>
+          <dt>Rendering</dt><dd>Canvas + DOM</dd>
+          <dt>Saves</dt><dd>localStorage</dd>
+          <dt>Backend</dt><dd>CF Worker + D1<sup>*</sup></dd>
+          <dt>Mobile</dt><dd>Capacitor (later)</dd>
+          <dt>Code licence</dt><dd>GPL-2.0</dd>
+          <dt>Status</dt><dd class="live">Alpha · live ●</dd>
+        </dl>
+      </aside>
+    </div>
+
+    <div class="pillars" aria-label="Design pillars">
+      <div class="pillar"><span class="k">The core loop</span><p>Allocate scarce workers, live with the consequences a year at a time — the Hamurabi inheritance.</p></div>
+      <div class="pillar"><span class="k">Pops age, not a counter</span><p>Child → adult → elder. Births are earned against food and morale, never free.</p></div>
+      <div class="pillar"><span class="k">Every tile matters</span><p>Variable fertility and capacity mean poor land still has a use — outposts, roads, reach.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SECTION 2 ===================== -->
+<section class="section" id="volunteers">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="section-num">02</span>
+      <h2>Join the build</h2>
+    </div>
+
+    <p class="vol-intro">Cambrera has been a solo project and is now opening up to a small team. The engineering and design foundations are in place and playable — the biggest opportunities are on the <strong>creative</strong> side, where the visual and audio identity is still wide open. Here is where a volunteer can make the most difference, and how.</p>
+
+    <div class="roles">
+
+      <article class="role hot">
+        <div class="role-top">
+          <span class="role-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.7 0-.5-.2-.9-.5-1.2-.3-.4-.5-.8-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-3.9-4-6-9-6Z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/></svg></span>
+          <h3>Original art</h3>
+        </div>
+        <p>Terrain, buildings and UI on a 32px grid — the entire visual identity of the island.</p>
+        <p class="gap"><b>The opportunity:</b> a blank canvas — the map runs on a procedural placeholder today, so the look is yours to define. An <b>art style guide is the natural first step.</b></p>
+        <span class="chip need">High impact</span>
+      </article>
+
+      <article class="role hot">
+        <div class="role-top">
+          <span class="role-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg></span>
+          <h3>Music &amp; sound</h3>
+        </div>
+        <p>An adaptive score for a quiet, contemplative builder, plus the sound-effects vocabulary to match.</p>
+        <p class="gap"><b>The opportunity:</b> a single placeholder loop today and effects still to come — room to shape the whole audio feel.</p>
+        <span class="chip need">High impact</span>
+      </article>
+
+      <article class="role hot">
+        <div class="role-top">
+          <span class="role-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></span>
+          <h3>Voice acting</h3>
+        </div>
+        <p>Narration for the intro and the pre-game departure sequence — the game's Infocom-style "feelies."</p>
+        <p class="gap"><b>The opportunity:</b> not yet recorded, and deliberately scoped to intro + departure — a self-contained first piece.</p>
+        <span class="chip need">High impact</span>
+      </article>
+
+      <article class="role">
+        <div class="role-top">
+          <span class="role-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 6l-3 12"/></svg></span>
+          <h3>Engineering</h3>
+        </div>
+        <p>Gameplay systems, tooling and UI in TypeScript + Vite. No engine to learn — it's plain code.</p>
+        <p class="gap"><b>Good for:</b> anyone comfortable with typed JS who wants a clean, small codebase.</p>
+        <span class="chip open">Open</span>
+      </article>
+
+      <article class="role">
+        <div class="role-top">
+          <span class="role-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m9 15 2-6 4-2-2 6-4 2Z"/></svg></span>
+          <h3>Game design</h3>
+        </div>
+        <p>Systems and balance. Tuning is data-driven here — hunches get validated with Monte-Carlo sims before code.</p>
+        <p class="gap"><b>Good for:</b> systems thinkers who like spreadsheets as much as vibes.</p>
+        <span class="chip open">Open</span>
+      </article>
+
+      <article class="role">
+        <div class="role-top">
+          <span class="role-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20s2-1 4-1 4 1 4 1V6s-2-1-4-1-4 1-4 1Z"/><path d="M20 5 8.5 16.5"/><path d="M18 4l2 1-1 2"/></svg></span>
+          <h3>Writing &amp; lore</h3>
+        </div>
+        <p>Chronicle prose, events and worldbuilding within the established Exarum canon.</p>
+        <p class="gap"><b>Good for:</b> writers who can keep a consistent, understated voice.</p>
+        <span class="chip open">Open</span>
+      </article>
+
+      <article class="role">
+        <div class="role-top">
+          <span class="role-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5L16 9"/></svg></span>
+          <h3>QA &amp; playtesting</h3>
+        </div>
+        <p>Play the live alpha and report back — in-game feedback and full-run chronicles ship straight to a dashboard.</p>
+        <p class="gap"><b>Good for:</b> anyone — no setup, just play the deployed build.</p>
+        <span class="chip open">Open</span>
+      </article>
+
+      <article class="role">
+        <div class="role-top">
+          <span class="role-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="1.5"/><path d="M9 4V3h6v1M8.5 10h7M8.5 14h7M8.5 18h4"/></svg></span>
+          <h3>Production</h3>
+        </div>
+        <p>Milestone coordination, contributor onboarding and keeping docs and roadmap honest as the team grows.</p>
+        <p class="gap"><b>Good for:</b> organisers who like shipping small, focused increments.</p>
+        <span class="chip open">Open</span>
+      </article>
+
+    </div>
+
+    <div class="howto">
+      <h3>How to get involved</h3>
+      <div class="steps">
+        <div class="step"><span class="n">1</span><p><b>Play it first.</b> Try the alpha at cambrera.digimente.xyz and leave in-game feedback — it's the fastest way to understand the game.</p></div>
+        <div class="step"><span class="n">2</span><p><b>Read the docs.</b> Start with <code>CONTRIBUTING.md</code>, plus <code>CREDITS.md</code> and <code>docs/ASSET_PIPELINE.md</code> for creative work.</p></div>
+        <div class="step"><span class="n">3</span><p><b>Pick a lane.</b> Grab something from the discipline roadmap, or open an issue proposing what you'd like to own.</p></div>
+        <div class="step"><span class="n">4</span><p><b>Contribute via PR.</b> <code>main</code> is protected — one review approves a change. Code is GPL-2.0; creative assets are licensed per asset.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-row">
+    <span>Isle of Cambrera · alpha v0.8.5</span>
+    <span class="sep">|</span>
+    <a href="https://cambrera.digimente.xyz" target="_blank" rel="noopener">Play</a>
+    <a href="https://github.com/vicosurge/survival-civ-game" target="_blank" rel="noopener">Repository</a>
+    <a href="https://github.com/users/vicosurge/projects/1" target="_blank" rel="noopener">Roadmap</a>
+    <span class="sep">|</span>
+    <span>* Cloudflare Worker + D1 store alpha feedback only — the game itself is fully client-side.</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var canvas = document.getElementById("island");
+  if (!canvas) return;
+  var ctx = canvas.getContext("2d");
+
+  // deterministic PRNG so the "map" is a designed illustration, not noise
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  var rnd = mulberry32(20260715);
+
+  var COLS = 24, ROWS = 18;
+  var W = canvas.width, H = canvas.height;
+  var T = Math.floor(Math.min(W / COLS, H / ROWS));
+  var ox = Math.floor((W - T * COLS) / 2);
+  var oy = Math.floor((H - T * ROWS) / 2);
+
+  // palette (fixed illustration colours; frame handles theme)
+  var C = {
+    sea:   "#2f4f5e", seaLt: "#3a5f70",
+    beach: "#d7c085",
+    grass: "#7c9a58", grassF: "#5f8144",
+    forest:"#3f5f3d",
+    mtn:   "#8c8272", mtnHi: "#b6ad9c", snow: "#ece6da",
+    river: "#4a7d90",
+    road:  "#6b5334", town: "#c9962f", townRoof: "#8f5a2a",
+    line:  "rgba(20,14,8,0.18)"
+  };
+
+  var grid = [];
+  function key(x,y){return y*COLS+x;}
+  var cx = COLS*0.5, cy = ROWS*0.54;
+
+  for (var y=0;y<ROWS;y++){
+    for (var x=0;x<COLS;x++){
+      var nx=(x-cx)/(COLS*0.5), ny=(y-cy)/(ROWS*0.5);
+      var d=Math.sqrt(nx*nx*1.0+ny*ny*1.18);
+      var wob=0.11*Math.sin(x*0.85)+0.10*Math.cos(y*0.8)+0.07*Math.sin((x+y)*0.7)+0.05*Math.cos((x-y)*0.9);
+      var land=(d+wob)<0.9;
+      grid[key(x,y)] = { x:x, y:y, land:land, ny:ny, type:"sea" };
+    }
+  }
+  function get(x,y){ if(x<0||y<0||x>=COLS||y>=ROWS) return null; return grid[key(x,y)]; }
+  function neighboursWater(x,y){
+    var dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+    for(var i=0;i<dirs.length;i++){var t=get(x+dirs[i][0],y+dirs[i][1]); if(!t||!t.land) return true;}
+    return false;
+  }
+
+  // assign terrain
+  for (var i=0;i<grid.length;i++){
+    var c=grid[i]; if(!c.land) continue;
+    c.type="grass";
+    if(neighboursWater(c.x,c.y)) c.type="beach";
+  }
+  // central mountain range (divides island north/south)
+  for (var j=0;j<grid.length;j++){
+    var m=grid[j]; if(!m.land||m.type==="beach") continue;
+    var band=Math.abs(m.ny) + 0.16*Math.sin(m.x*0.7);
+    if(band<0.2 && m.x>3 && m.x<COLS-4) m.type="mtn";
+  }
+  // forests — clusters on the non-mountain land
+  for (var f=0;f<grid.length;f++){
+    var g=grid[f]; if(g.type!=="grass") continue;
+    var v=Math.sin(g.x*0.9)*Math.cos(g.y*1.1)+0.6*Math.sin((g.x+g.y)*0.6);
+    if(v>0.55 || rnd()>0.86) g.type="forest";
+  }
+  // fertile grass, biased south + river-side
+  for (var q=0;q<grid.length;q++){
+    var gg=grid[q]; if(gg.type!=="grass") continue;
+    if(gg.ny>0 && rnd()<0.32) gg.fertile=true;
+  }
+  // river: from mountains down to south coast
+  var rx = Math.round(cx)-1, ry = Math.round(cy);
+  for (var step=0; step<ROWS; step++){
+    var yy=ry+step; if(yy>=ROWS) break;
+    var xx=rx+Math.round(1.6*Math.sin(step*0.55));
+    var rc=get(xx,yy); if(rc && rc.land){ rc.type = rc.type==="mtn" ? "mtn":"river"; rc.river=true; }
+    var rc2=get(xx+1,yy); if(rc2 && rc2.land && rc2.type!=="mtn" && rnd()<0.4){ rc2.type="river"; }
+    if(rc && !rc.land) break;
+  }
+  // town on southern shore, near river mouth, on land
+  var townCell=null;
+  for (var ty=ROWS-1; ty>3 && !townCell; ty--){
+    for (var tx=Math.round(cx)-3; tx<=Math.round(cx)+3; tx++){
+      var tc=get(tx,ty);
+      if(tc && tc.land && tc.type!=="mtn" && tc.type!=="river" && tc.type!=="beach"){ townCell=tc; break; }
+    }
+  }
+  if(townCell){ townCell.type="town"; }
+
+  // ---- draw ----
+  function px(x){ return ox + x*T; }
+  function py(y){ return oy + y*T; }
+
+  // sea background with subtle banding
+  for (var sy=0;sy<ROWS;sy++){
+    for (var sx=0;sx<COLS;sx++){
+      var cc=get(sx,sy);
+      if(cc.land) continue;
+      ctx.fillStyle = ((sx+sy)%2===0) ? C.sea : C.seaLt;
+      ctx.fillRect(px(sx),py(sy),T,T);
+    }
+  }
+
+  function fillTile(x,y,col){ ctx.fillStyle=col; ctx.fillRect(px(x),py(y),T,T); }
+
+  for (var dy=0;dy<ROWS;dy++){
+    for (var dx=0;dx<COLS;dx++){
+      var cell=get(dx,dy); if(!cell.land) continue;
+      var X=px(dx), Y=py(dy);
+      switch(cell.type){
+        case "beach": fillTile(dx,dy,C.beach); break;
+        case "grass": fillTile(dx,dy, cell.fertile?C.grassF:C.grass); break;
+        case "forest":
+          fillTile(dx,dy,C.grass);
+          ctx.fillStyle=C.forest;
+          for(var t=0;t<3;t++){
+            var trx=X+T*(0.22+0.28*t)+ (t===1?T*0.05:0);
+            var tryy=Y+T*(0.66);
+            var s=T*0.2;
+            ctx.beginPath();
+            ctx.moveTo(trx,tryy-s*1.6);
+            ctx.lineTo(trx-s,tryy);
+            ctx.lineTo(trx+s,tryy);
+            ctx.closePath(); ctx.fill();
+          }
+          break;
+        case "river": fillTile(dx,dy,C.river); break;
+        case "mtn":
+          fillTile(dx,dy,C.mtn);
+          ctx.fillStyle=C.mtnHi;
+          ctx.beginPath();
+          ctx.moveTo(X+T*0.5,Y+T*0.18);
+          ctx.lineTo(X+T*0.85,Y+T*0.82);
+          ctx.lineTo(X+T*0.15,Y+T*0.82);
+          ctx.closePath(); ctx.fill();
+          ctx.fillStyle=C.snow;
+          ctx.beginPath();
+          ctx.moveTo(X+T*0.5,Y+T*0.18);
+          ctx.lineTo(X+T*0.63,Y+T*0.42);
+          ctx.lineTo(X+T*0.37,Y+T*0.42);
+          ctx.closePath(); ctx.fill();
+          break;
+        case "town":
+          fillTile(dx,dy,C.grassF);
+          // little house
+          ctx.fillStyle=C.town;
+          ctx.fillRect(X+T*0.28,Y+T*0.45,T*0.44,T*0.34);
+          ctx.fillStyle=C.townRoof;
+          ctx.beginPath();
+          ctx.moveTo(X+T*0.22,Y+T*0.46);
+          ctx.lineTo(X+T*0.5,Y+T*0.22);
+          ctx.lineTo(X+T*0.78,Y+T*0.46);
+          ctx.closePath(); ctx.fill();
+          break;
+      }
+      // faint tile grid on land
+      ctx.strokeStyle=C.line; ctx.lineWidth=1;
+      ctx.strokeRect(px(dx)+0.5,py(dy)+0.5,T,T);
+    }
+  }
+
+  // subtle coastline emphasis
+  ctx.strokeStyle="rgba(20,14,8,0.28)";
+  ctx.lineWidth=1.5;
+  for (var ey=0;ey<ROWS;ey++){
+    for (var ex=0;ex<COLS;ex++){
+      var e=get(ex,ey); if(!e.land) continue;
+      if(neighboursWater(ex,ey)){
+        var EX=px(ex),EY=py(ey);
+        // draw edges that face water
+        var dirs=[[1,0,[1,0,1,1]],[-1,0,[0,0,0,1]],[0,1,[0,1,1,1]],[0,-1,[0,0,1,0]]];
+        for(var k=0;k<dirs.length;k++){
+          var nb=get(ex+dirs[k][0],ey+dirs[k][1]);
+          if(!nb||!nb.land){
+            var s2=dirs[k][2];
+            ctx.beginPath();
+            ctx.moveTo(EX+s2[0]*T, EY+s2[1]*T);
+            ctx.lineTo(EX+s2[2]*T, EY+s2[3]*T);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+  }
+})();
+</script>
