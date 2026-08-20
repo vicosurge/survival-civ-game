@@ -1,3 +1,5 @@
+import { CUTSCENES, CUTSCENE_IMAGE_DIR, checkCutsceneTriggers, cutsceneArchive, markCutsceneSeen } from "./cutscenes";
+import type { CutsceneDef } from "./cutscenes";
 import { HELP_SECTIONS } from "./help";
 import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReach, totalReachableCapacity } from "./map";
 import { JOB_TOOLTIPS } from "./narratives";
@@ -40,6 +42,7 @@ import {
   ALARM_RESPONSES,
   AlarmResponseId,
   ANATA_SACRIFICE_DECLINE_MORALE,
+  CutsceneId,
   ANATA_SACRIFICE_FOOD_COST,
   ANATA_SACRIFICE_MORALE_GAIN,
   AUTHOR,
@@ -105,7 +108,20 @@ export interface UIHandlers {
   onNewGame: () => void;
 }
 
-const SKIP_INTRO_KEY = "isle-of-cambrera-skip-intro";
+// One toggle governs every cutscene, the opening scroll included — the intro
+// *is* the founding cutscene, so two parallel skip systems would be a bug
+// waiting to happen. The old intro-only key is migrated once so testers who
+// already opted out of the intro don't get it back.
+const SKIP_CUTSCENES_KEY = "isle-of-cambrera-skip-cutscenes";
+const LEGACY_SKIP_INTRO_KEY = "isle-of-cambrera-skip-intro";
+
+function skipCutscenes(): boolean {
+  if (localStorage.getItem(LEGACY_SKIP_INTRO_KEY) === "1") {
+    localStorage.setItem(SKIP_CUTSCENES_KEY, "1");
+    localStorage.removeItem(LEGACY_SKIP_INTRO_KEY);
+  }
+  return localStorage.getItem(SKIP_CUTSCENES_KEY) === "1";
+}
 const FEEDBACK_WORKER_URL = "https://cambrera.digimente.xyz/feedback";
 const CHRONICLE_PAYLOAD_LIMIT = 256 * 1024;  // 256 KB; soft cap. The worker accepts up to 512KB.
 
@@ -128,6 +144,7 @@ export function initUI(handlers: UIHandlers): void {
   initFeedbackModal();
   initExportChronicle();
   initHelpHandlers();
+  initRemembrancesHandlers();
   initMusicHandlers();
 }
 
@@ -142,10 +159,10 @@ function renderStaticCredits(): void {
 function initIntroHandlers(): void {
   const beginBtn = document.getElementById("intro-begin-btn")!;
   const skipBox = document.getElementById("intro-skip-checkbox") as HTMLInputElement;
-  skipBox.checked = localStorage.getItem(SKIP_INTRO_KEY) === "1";
+  skipBox.checked = skipCutscenes();
   skipBox.addEventListener("change", () => {
-    if (skipBox.checked) localStorage.setItem(SKIP_INTRO_KEY, "1");
-    else localStorage.removeItem(SKIP_INTRO_KEY);
+    if (skipBox.checked) localStorage.setItem(SKIP_CUTSCENES_KEY, "1");
+    else localStorage.removeItem(SKIP_CUTSCENES_KEY);
   });
   beginBtn.addEventListener("click", () => {
     hideIntro();
@@ -357,7 +374,7 @@ function downloadChronicle(state: GameState): void {
 export function maybeShowGameOverFeedback(state: GameState, onResolve: () => void): void {
   if (!state.gameOver || state.gameOverFeedbackShown) return;
   // Don't stack the modal on top of any other blocking overlay.
-  if (state.merchantVisit || state.pendingRefugees || state.pendingElderDecision || state.pendingChildDecision || state.pendingAnataSacrifice) {
+  if (state.merchantVisit || state.pendingRefugees || state.pendingElderDecision || state.pendingChildDecision || state.pendingAnataSacrifice || state.pendingCutscene) {
     return;
   }
   if (!document.getElementById("feedback-overlay")!.classList.contains("hidden")) return;
@@ -450,10 +467,16 @@ export function startBackgroundMusic(): void {
 
 export function maybeShowIntro(onBegin: () => void): void {
   _onIntroBegin = onBegin;
-  if (localStorage.getItem(SKIP_INTRO_KEY) === "1") {
+  if (skipCutscenes()) {
     onBegin();
     return;
   }
+  // The opening scroll is the `founding` cutscene wearing the pre-game chrome
+  // (credits, skip toggle, Begin). Copy comes from the same content file as
+  // every other cutscene so a writer only ever edits one place.
+  const founding = CUTSCENES.founding;
+  document.getElementById("intro-title")!.textContent = founding.title;
+  document.getElementById("intro-body")!.innerHTML = founding.paragraphs.map((t) => `<p>${t}</p>`).join("");
   const overlay = document.getElementById("intro-overlay")!;
   overlay.classList.remove("hidden");
   overlay.setAttribute("aria-hidden", "false");
@@ -463,6 +486,150 @@ function hideIntro(): void {
   const overlay = document.getElementById("intro-overlay")!;
   overlay.classList.add("hidden");
   overlay.setAttribute("aria-hidden", "true");
+}
+
+// ─── Cutscenes ────────────────────────────────────────────────────────────────
+// Milestone interludes. They block End Year on purpose — the same nullable-field
+// pause pattern the merchant and refugee modals use — so a player spamming the
+// turn button can't blow past an authored moment by accident.
+
+// Set while the player is re-reading a cutscene from the archive. The read-only
+// view borrows the same overlay, so the live path has to stand down while it's up.
+let _archiveCutscene: CutsceneId | null = null;
+
+function cutsceneArtHTML(def: CutsceneDef): string {
+  // Fail-soft, like the music: an unfilled art slot renders a placeholder of
+  // exactly the same size, so dropping a file into public/cutscenes/ and naming
+  // it in the JSON is the whole of "adding art".
+  return def.image
+    ? `<div class="cutscene-art" role="img" aria-label="${def.title}" style="background-image: url('${CUTSCENE_IMAGE_DIR}${def.image}')"></div>`
+    : `<div class="cutscene-art is-placeholder" aria-hidden="true">✦</div>`;
+}
+
+function cutscenePanelHTML(def: CutsceneDef, year: number, footer: string): string {
+  return `
+    <div class="papyrus" role="dialog" aria-labelledby="cutscene-title">
+      ${cutsceneArtHTML(def)}
+      <h2 id="cutscene-title">${def.title}</h2>
+      <div class="cutscene-meta">Year ${year}</div>
+      <div class="papyrus-body">${def.paragraphs.map((t) => `<p>${t}</p>`).join("")}</div>
+      <div class="cutscene-footer">${footer}</div>
+    </div>
+  `;
+}
+
+function hideCutsceneOverlay(): void {
+  const overlay = document.getElementById("cutscene-overlay")!;
+  overlay.classList.add("hidden");
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.innerHTML = "";
+}
+
+export function maybeShowCutscene(state: GameState, onResolve: () => void): void {
+  if (_archiveCutscene !== null) return;
+
+  checkCutsceneTriggers(state);
+  const id = state.pendingCutscene;
+  if (!id || state.gameOver) {
+    hideCutsceneOverlay();
+    return;
+  }
+
+  // Global skip: burn through everything that has come due without showing it.
+  // Skipped still counts as seen, so the archive keeps them readable later.
+  if (skipCutscenes()) {
+    while (state.pendingCutscene) {
+      markCutsceneSeen(state, state.pendingCutscene);
+      checkCutsceneTriggers(state);
+    }
+    hideCutsceneOverlay();
+    onResolve();
+    return;
+  }
+
+  const def = CUTSCENES[id];
+  const overlay = document.getElementById("cutscene-overlay")!;
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+  overlay.innerHTML = cutscenePanelHTML(def, state.year, `
+    <button class="papyrus-btn secondary cutscene-skip">Skip</button>
+    <button class="papyrus-btn cutscene-continue">Continue</button>
+  `);
+
+  const dismiss = (): void => {
+    markCutsceneSeen(state, id);
+    hideCutsceneOverlay();
+    onResolve();
+  };
+  overlay.querySelector<HTMLButtonElement>(".cutscene-continue")!.addEventListener("click", dismiss);
+  overlay.querySelector<HTMLButtonElement>(".cutscene-skip")!.addEventListener("click", dismiss);
+}
+
+// ─── Remembrances (cutscene archive) ─────────────────────────────────────────
+// Chronological by the year each interlude fired, so it reads as this
+// settlement's history. Unseen cutscenes are absent — the archive never spoils.
+
+function initRemembrancesHandlers(): void {
+  document.getElementById("remembrances-btn")!.addEventListener("click", showRemembrances);
+}
+
+function hideRemembrances(): void {
+  const overlay = document.getElementById("remembrances-overlay")!;
+  overlay.classList.add("hidden");
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.innerHTML = "";
+}
+
+function showRemembrances(): void {
+  const state = _stateRef;
+  if (!state) return;
+  const overlay = document.getElementById("remembrances-overlay")!;
+  const entries = cutsceneArchive(state);
+  const list = entries.length === 0
+    ? `<p class="remembrance-empty">Nothing has happened here yet that anyone thought worth retelling.</p>`
+    : `<div class="remembrance-list">${entries.map((e) => `
+        <button class="remembrance-item" data-cutscene="${e.id}" data-year="${e.year}">
+          <span class="rem-year">Year ${e.year}</span>
+          <span class="rem-title">${e.def.title}</span>
+        </button>`).join("")}</div>`;
+
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+  overlay.innerHTML = `
+    <div class="papyrus" role="dialog" aria-labelledby="remembrances-title">
+      <h2 id="remembrances-title">Remembrances</h2>
+      ${list}
+      <div class="cutscene-footer">
+        <button class="papyrus-btn secondary remembrances-close">Close</button>
+      </div>
+    </div>
+  `;
+  overlay.querySelector<HTMLButtonElement>(".remembrances-close")!.addEventListener("click", hideRemembrances);
+  overlay.querySelectorAll<HTMLButtonElement>(".remembrance-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset["cutscene"] as CutsceneId;
+      showArchivedCutscene(id, Number(btn.dataset["year"]));
+    });
+  });
+}
+
+// Read-only replay. Mutates nothing — Close returns to the list.
+function showArchivedCutscene(id: CutsceneId, year: number): void {
+  const def = CUTSCENES[id];
+  if (!def) return;
+  _archiveCutscene = id;
+  hideRemembrances();
+  const overlay = document.getElementById("cutscene-overlay")!;
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+  overlay.innerHTML = cutscenePanelHTML(def, year, `
+    <button class="papyrus-btn cutscene-close">Close</button>
+  `);
+  overlay.querySelector<HTMLButtonElement>(".cutscene-close")!.addEventListener("click", () => {
+    _archiveCutscene = null;
+    hideCutsceneOverlay();
+    showRemembrances();
+  });
 }
 
 // ─── Departure wizard ─────────────────────────────────────────────────────────
@@ -599,7 +766,8 @@ export function renderUI(state: GameState, onAllocChange: () => void): void {
     || !!state.pendingRefugees
     || state.pendingElderDecision
     || state.pendingChildDecision
-    || state.pendingAnataSacrifice;
+    || state.pendingAnataSacrifice
+    || state.pendingCutscene !== null;
   endBtn.textContent = state.gameOver
     ? "— Settlement Failed —"
     : state.merchantVisit !== null
@@ -612,7 +780,9 @@ export function renderUI(state: GameState, onAllocChange: () => void): void {
             ? "Council awaiting…"
             : state.pendingAnataSacrifice
               ? "Priests at the shrine…"
-              : "End Year";
+              : state.pendingCutscene !== null
+                ? "A moment to remember…"
+                : "End Year";
 }
 
 export function maybeShowTradeModal(state: GameState, onResolve: () => void): void {

@@ -404,7 +404,7 @@ html, body {
 }
 #intro-overlay.hidden { display: none; }
 
-#intro-papyrus {
+.papyrus {
   max-width: 620px;
   width: 100%;
   max-height: 90vh;
@@ -424,8 +424,8 @@ html, body {
   position: relative;
 }
 
-#intro-papyrus::before,
-#intro-papyrus::after {
+.papyrus::before,
+.papyrus::after {
   content: "";
   position: absolute;
   left: 0;
@@ -439,10 +439,10 @@ html, body {
   );
   pointer-events: none;
 }
-#intro-papyrus::before { top: -6px; }
-#intro-papyrus::after { bottom: -6px; }
+.papyrus::before { top: -6px; }
+.papyrus::after { bottom: -6px; }
 
-#intro-papyrus h2 {
+.papyrus h2 {
   margin: 0 0 1rem 0;
   text-align: center;
   font-size: 2rem;
@@ -452,7 +452,7 @@ html, body {
   font-weight: normal;
 }
 
-#intro-body p {
+.papyrus-body p {
   margin: 0 0 1rem 0;
   text-align: justify;
   text-indent: 1.5em;
@@ -463,8 +463,8 @@ html, body {
   text-align: center;
   font-size: 1.1rem;
 }
-#intro-body em { color: #6b3f0f; font-style: italic; }
-#intro-body .pronunciation {
+.papyrus-body em { color: #6b3f0f; font-style: italic; }
+.papyrus-body .pronunciation {
   font-size: 0.8em;
   color: #8a6535;
   font-style: italic;
@@ -504,7 +504,7 @@ html, body {
   user-select: none;
 }
 
-#intro-begin-btn {
+.papyrus-btn {
   padding: 0.6rem 1.8rem;
   background: #6b3f0f;
   color: #f0e2b8;
@@ -516,7 +516,118 @@ html, body {
   cursor: pointer;
   text-transform: uppercase;
 }
-#intro-begin-btn:hover { background: #8a5415; }
+.papyrus-btn:hover { background: #8a5415; }
+.papyrus-btn.secondary {
+  background: transparent;
+  color: #5c4320;
+  border-color: #8a6535;
+  font-weight: normal;
+}
+.papyrus-btn.secondary:hover { background: rgba(92, 67, 32, 0.12); }
+
+/* ─── Cutscenes ──────────────────────────────────────────────────────────────
+   Milestone narrative interludes. Share the intro's parchment look via
+   .papyrus so a cutscene reads as the same artifact as the opening scroll. */
+
+#cutscene-overlay,
+#remembrances-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 7, 4, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1.5rem;
+}
+#cutscene-overlay.hidden,
+#remembrances-overlay.hidden { display: none; }
+
+/* Fixed aspect ratio so the layout does not reflow when an artist fills the
+   slot later — the placeholder occupies exactly the space the art will. */
+.cutscene-art {
+  aspect-ratio: 16 / 7;
+  width: 100%;
+  margin: 0 0 1.25rem 0;
+  border: 1px solid #8a6535;
+  box-shadow: 0 0 0 3px rgba(168, 133, 86, 0.35) inset;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.cutscene-art.is-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(92, 67, 32, 0.07) 0 10px,
+      transparent 10px 20px
+    ),
+    linear-gradient(180deg, #dbc596 0%, #c9ad78 100%);
+  color: rgba(92, 67, 32, 0.55);
+  font-size: 2rem;
+  letter-spacing: 0.4em;
+}
+
+.cutscene-meta {
+  text-align: center;
+  margin: -0.5rem 0 1.25rem 0;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8a6535;
+}
+
+.cutscene-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed rgba(92, 67, 32, 0.5);
+}
+
+/* Archive ("Remembrances") — chronological list of what this settlement has
+   actually lived through. Unseen entries never appear. */
+.remembrance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0 0 0;
+}
+.remembrance-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  background: rgba(92, 67, 32, 0.08);
+  border: 1px solid rgba(92, 67, 32, 0.45);
+  color: #3a2814;
+  font-family: inherit;
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+.remembrance-item:hover { background: rgba(92, 67, 32, 0.18); }
+.remembrance-item .rem-year {
+  flex: 0 0 auto;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  color: #8a6535;
+}
+.remembrance-item .rem-title { color: #6b3f0f; }
+.remembrance-empty {
+  margin: 1rem 0 0 0;
+  font-style: italic;
+  color: #6b5230;
+  text-align: center;
+}
 
 #trade-overlay {
   position: fixed;

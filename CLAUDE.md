@@ -32,7 +32,7 @@ Node ≥ 18.
 - TypeScript (strict, noUnusedLocals + noUnusedParameters)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage saves, single slot. Key: `isle-of-cambrera-save-v27`. **Bump on any breaking state-shape change.** Old saves must fail loud → `newGame()`, never silent NaN/undefined.
+- localStorage saves, single slot. Key: `isle-of-cambrera-save-v28`. **Bump on any breaking state-shape change.** Old saves must fail loud → `newGame()`, never silent NaN/undefined.
 - **No engine, no UI framework.** React if UI complexity demands. Don't reach for Phaser/Pixi/Godot. Turn-based tile game is ~70% UI, ~30% rendering — engine wouldn't earn its weight.
 
 Version history: git log + README. This file = current state only.
@@ -393,9 +393,32 @@ Landing before ship — narrative beat: make landfall first, then decide the ves
 
 `DepartureChoices` is open-ended — future hooks read fields directly without data-shape churn.
 
-### Intro papyrus
+### Cutscenes (Remembrances)
 
-`#intro-overlay` parchment with backstory. Hidden by default. `maybeShowIntro()` un-hides on first load + after New Game unless `localStorage["isle-of-cambrera-skip-intro"] === "1"`. CSS-only, no game-state impact.
+Milestone narrative interludes — Infocom-style "feelies." Three or four paragraphs of world at a milestone, a Skip that costs nothing, and an in-game archive. **No mechanical effect at all, by design** — the mechanical game stays Hamurabi-spare, and this is where Cambrera gets to be richly weird without bloating the core loop.
+
+- `state.pendingCutscene: CutsceneId | null` — **blocks End Year** (same nullable-field pause pattern as `merchantVisit`/`pendingRefugees`), so turn-button spam can't blow past an authored moment.
+- `state.seenCutscenes: { id, year }[]` — read *or* skipped both count as seen. The year is stored, not derived: the Long House lands in a different year every run.
+- Overlay `#cutscene-overlay`, handler `maybeShowCutscene` in ui.ts, called from `redraw()` beside the other pause modals.
+
+**Content lives in `src/content/cutscenes.json`** — a writer tunes voice without touching TypeScript. `src/cutscenes.ts` owns *when*; the JSON owns *what it says*; ui.ts owns how it looks. This establishes the `src/content/` pattern that #32 (prose → JSON migration) would generalize — **new prose should land here, not as constants**, unless it's a one-line chronicle beat (those still belong in `narratives.ts`).
+
+**Trigger table, not a switch.** `TRIGGERS` in cutscenes.ts is `{ id, when(state) }` rows; `checkCutsceneTriggers` queues the first unseen row whose condition holds and returns. Consequences worth keeping:
+- Triggers are **conditions, not call sites** — nothing in `build()` or the turn pipeline knows cutscenes exist. A milestone reached by any route (build, event, save load) gets picked up on the next redraw.
+- Two milestones in one turn **queue**, they don't clobber — the second fires after the first is dismissed. Table order is the tiebreak.
+- Adding one is three edits: JSON entry, `CutsceneId` union member, `TRIGGERS` row.
+
+**`founding` is the intro.** `#intro-overlay` renders `CUTSCENES.founding` inside the pre-game chrome (credits, skip toggle, Begin — which also satisfies the browser autoplay gate). It can't use the pending flag because it runs *before* a GameState exists, so `newGame()` marks it seen at year 1; it still appears in the archive. It stays in `TRIGGERS` so there's one complete list of cutscenes rather than two partial ones. **Don't add a second overlay flow for it.**
+
+**One skip toggle.** `localStorage["isle-of-cambrera-skip-cutscenes"]` governs the intro *and* every later cutscene (the old `-skip-intro` key is migrated once, in `skipCutscenes()`). Skipping still marks seen, so the archive is where a player goes to read what they waved past.
+
+**Archive = "Remembrances"** (`#remembrances-overlay`, button in the chronicle strip). Chronological by trigger year, unseen entries absent (**no spoilers**), read-only replay — `_archiveCutscene` makes the live path stand down while it borrows the overlay. Named *Remembrances*, not "Chronicles", to avoid colliding with the Chronicle log and Export Chronicle; ties to Anata's oral tradition.
+
+**Art slot.** `image: string | null` per entry → `public/cutscenes/`, fail-soft like the music. A fixed **16:7** placeholder occupies exactly the space the art will, so filling a slot is "drop the file in, name it in the JSON" with no code change and no layout reflow. See `docs/ASSET_PIPELINE.md`.
+
+**Paragraphs are authored HTML** (inline `<em>`/`<span>` only) through `innerHTML`, same as `HELP_SECTIONS`. Repo content, never player input.
+
+**Out of scope for v1** (don't drift into these without asking): branching or choice-bearing cutscenes, voiceover/animation, per-departure-choice `founding` variants, localization.
 
 ### Chronicle (log)
 
@@ -452,6 +475,8 @@ src/render.ts       Canvas: terrain × state colors, decor layers, road crosshat
 src/ui.ts           DOM overlays. renderUI, intro, wizard, trade, governance, help modal, music.
 src/help.ts         HELP_SECTIONS. **Update with mechanic changes** — out-of-date help is worse than none.
 src/narratives.ts   Chronicle prose (unlock, town upgrade, civic flip, job tooltips). Keep prose out of turn.ts.
+src/cutscenes.ts    Cutscene trigger table + seen/archive helpers. Owns *when*, never *what*.
+src/content/        Player-facing prose as JSON. cutscenes.json today; #32 would move the rest here.
 src/style.css       Retro palette: muted browns, gold accents, monospace.
 public/music/       Music served at /music/* (not bundled). gemini_iron_under_snow.mp3.
 ```

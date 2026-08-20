@@ -139,6 +139,11 @@ export function newGame(departure: DepartureChoices): GameState {
     merchantSecondShipPending: false,
     pendingRefugees: null,
     pendingAnataSacrifice: false,
+    // The founding cutscene is presented by the pre-game intro overlay, before
+    // this state object exists — so it is born already seen, and shows up in
+    // the archive as Year 1 for a player who wants to re-read it.
+    pendingCutscene: null,
+    seenCutscenes: [{ id: "founding" as const, year: 1 }],
     elderTransitions: 0,
     elderPolicy: null,
     pendingElderDecision: false,

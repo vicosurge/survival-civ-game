@@ -39,7 +39,12 @@ Files here are copied verbatim to the site root and referenced by known path (`/
 public/
   music/        background loops (the current placeholder lives here)
   sfx/          short sound effects
+  cutscenes/    milestone interlude banners
 ```
+
+**Cutscene art** is the exception to the 32px grid: these are illustrated banners, not sprites, so they live in `public/` and are referenced by path. The overlay reserves a **16:7** slot and draws a placeholder of exactly that size when the file is absent — so art lands one piece at a time without ever breaking the layout.
+
+To add one: export the image, drop it in `public/cutscenes/`, and set the `image` field on that cutscene's entry in `src/content/cutscenes.json`. No code change, no registry entry.
 
 ## Naming conventions
 
@@ -51,6 +56,7 @@ Kebab-case, category-prefixed, and **mirroring the ids already in `src/types.ts`
 | Building | `building-<id>.png` | `building-granary.png` |
 | Icon | `icon-<thing>.png` | `icon-food.png` |
 | SFX | `sfx-<event>.mp3` | `sfx-build-complete.mp3` |
+| Cutscene banner | `cutscene-<id>.png` | `cutscene-long-house-built.png` |
 | Music | `music-<name>.mp3` | `music-main-theme.mp3` |
 
 ## Formats & resolution
