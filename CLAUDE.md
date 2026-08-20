@@ -32,7 +32,7 @@ Node ≥ 18.
 - TypeScript (strict, noUnusedLocals + noUnusedParameters)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage saves, single slot. Key: `isle-of-cambrera-save-v25`. **Bump on any breaking state-shape change.** Old saves must fail loud → `newGame()`, never silent NaN/undefined.
+- localStorage saves, single slot. Key: `isle-of-cambrera-save-v27`. **Bump on any breaking state-shape change.** Old saves must fail loud → `newGame()`, never silent NaN/undefined.
 - **No engine, no UI framework.** React if UI complexity demands. Don't reach for Phaser/Pixi/Godot. Turn-based tile game is ~70% UI, ~30% rendering — engine wouldn't earn its weight.
 
 Version history: git log + README. This file = current state only.
@@ -172,7 +172,7 @@ One-time, `types.ts:BUILDINGS`, `state.buildings: Record<BuildingId, boolean>`. 
 
 | Building | Cost | Gate | Bonus | Blocks |
 |---|---|---|---|---|
-| Granary | 30 food, 15 wood | — | +0.5 food/farmer/yr | locusts |
+| Granary | 30 food, 15 wood | — | +0.5 food/farmer/yr; **+80 food storage** | locusts |
 | Palisade | 20 wood, 25 stone | — | — | bandits |
 | Well | 10 wood, 15 stone | — | — | forest_fire |
 | Hunting Lodge | 10 wood | — | +0.5 food/hunter/yr | — |
@@ -183,7 +183,7 @@ One-time, `types.ts:BUILDINGS`, `state.buildings: Record<BuildingId, boolean>`. 
 | Chicken Coop | 5 wood, 3 stone | — | Flock 5; +0.5 food/bird/yr; auto-cull at cap=20 | — |
 | Dock | 12 wood, 15 stone | Long House | +`DOCK_SELL_BONUS = 1` gold/unit on merchant sells (food/wood 2g, stone 3g); buy rates unchanged. Also extends fisher reach (`DOCK_WATER_REACH`) | — |
 
-**Houses** (repeatable, not in BUILDINGS): `HOUSE_COST_BASE = { wood: 8, stone: 3 }` for the first; each subsequent house costs `+HOUSE_COST_INCREMENT = { wood: 2, stone: 1 }` over the previous via `nextHouseCost(state)`. +`HOUSE_CAPACITY = 6` cap, +`HOUSE_FOOD_YIELD = 2` food/yr garden plot. Long House gate. API: `canBuildHouse`/`buildHouse`/`houseBlockerReason`/`nextHouseCost`. **Don't flatten the cost** — escalation prevents the late-game "grind wood for unbounded huts" loop.
+**Houses** (repeatable, not in BUILDINGS): `HOUSE_COST_BASE = { wood: 8, stone: 3 }` for the first; each subsequent house costs `+HOUSE_COST_INCREMENT = { wood: 2, stone: 1 }` over the previous via `nextHouseCost(state)`. +`HOUSE_CAPACITY = 6` cap, +`HOUSE_FOOD_YIELD = 2` food/yr garden plot, +`HOUSE_STORAGE_BONUS = 10` food storage. Long House gate. API: `canBuildHouse`/`buildHouse`/`houseBlockerReason`/`nextHouseCost`. **Don't flatten the cost** — escalation prevents the late-game "grind wood for unbounded huts" loop.
 
 **Pop cap:** `INITIAL_HUT_CAPACITY (25) + houses × 6`. Blocks **births only**; refugees push past. Cap raised 20→25 to break the deadlock at the Long House gate.
 
@@ -239,14 +239,16 @@ API: `townUpgradeBlockerReason`/`canBuildTownUpgrade`/`buildTownUpgrade`. Yields
 
 ### Governance (civic decisions)
 
-"Governance" row in build column when `buildings.long_house === true`. Modal `#governance-overlay` lists active laws (elder + child policy) with toggle buttons.
+"Governance" row in build column when `buildings.long_house === true`. Modal `#governance-overlay` lists active laws (elder policy, child policy, work levy) with toggle buttons.
 
-**Re-application cost:** every flip applies the same morale delta. Frostpunk pattern — laws change, but each change carries friction. **Don't add free-first-flip or cooldown.**
+**Re-application cost:** every flip applies the destination policy's morale delta **plus** `MORALE_LAW_CHANGE_COST = -3` (see *Law-change friction*). Frostpunk pattern — laws change, but each change carries friction. **Don't add free-first-flip or cooldown.**
+
+Three laws: elder policy, child policy, work levy.
 
 **Where decisions live:**
 - First-time elder: turn.ts step 0, `#elder-overlay`, `acceptElderWork`/`respectElders`.
 - First-time child: end of turn, `#child-overlay`, `setChildrenWorking`/`setChildrenFree`.
-- Revisit: `#governance-overlay`, `toggleElderPolicy`/`toggleChildPolicy`.
+- Revisit: `#governance-overlay`, `toggleElderPolicy`/`toggleChildPolicy`/`toggleWorkLevy`.
 
 **Future civic decisions** (taxation, military, religion) belong here, **not in events.ts.** Add field on GameState, gate it (likely Long House or future civic), entry in governance modal, toggle handler in turn.ts.
 
@@ -272,6 +274,37 @@ Settlement-level (no tile, no worker).
 - Build (5 wood, 3 stone) → `chickens = CHICKEN_STARTING_FLOCK = 5`, `chickenCapacity = CHICKEN_CAP_INITIAL = 20`.
 - Step 1: `floor(chickens × CHICKEN_EGG_FOOD_RATE = 0.5)` food. Flock grows `max(1, floor(chickens × CHICKEN_GROWTH_RATE = 0.4))`/yr. Surplus auto-culls at cap → `CHICKEN_SLAUGHTER_FOOD = 1` food/bird. One-shot first-cull notification.
 - Cap expansion not yet implemented.
+
+### Food storage + spoilage
+
+**The Hamurabi rats.** Food has a capacity; half of anything held above it at year's end rots. Added in v0.9 to answer the #1 playtest complaint ("I never have a food issue, I can just assign more villagers to food") — banked food was free and infinite, so food stopped being a decision after the first stable harvest.
+
+- `foodCapacity(state)` (state.ts) = `FOOD_STORAGE_BASE (100)` + `GRANARY_STORAGE_BONUS (80)` if granary + `houses × HOUSE_STORAGE_BONUS (10)`. **Derived, like `popCapacity` — no save field.**
+- `spoilageFor(state, food)` is the single source of truth, shared by turn.ts step 5.5 and `projectedYields`. **Don't inline the arithmetic anywhere else** — the two must never disagree.
+- `FOOD_SPOILAGE_RATE = 0.5` of the *overflow*, not of the whole store.
+
+**Soft ceiling, not a hard clamp — this is load-bearing.** The fixed point of `X ← (X + surplus)(1 − rate)` is `X = surplus × (1 − rate)/rate`, so the store settles at cap + one year's surplus at rate 0.5. A hard clamp at cap would collide with the `food ≥ pop × 3` birth gate and reintroduce the v0.7 demographic deadlock.
+
+**`FOOD_STORAGE_BASE = 100` is a safety number, not a strength number.** It's the smallest value where every zero-surplus combination of (pop, granary, houses) still clears the birth gate — base 80 blocks pop 31 / no granary / 1 house. 80/100/120 all give the same hoarder-vs-balanced separation. **Don't lower it without re-running `sim/food_storage_cap.py`.** The rate is the soft knob for how harsh spoilage *feels*; the cap is what creates the decision.
+
+Sim findings (500 trials × 120 yrs): no spoilage → hoarder peaks at **1717 food**, finishes 26 pops / 1 material. With spoilage → peak 187, still 26 pops. A balanced player finishes **56 pops / 89 materials**. The mechanic separates the strategies 2× on final pop without touching farmer yield.
+
+UI: Food chip reads `held/cap` (mirrors the `Pop n/cap` idiom), goes amber via `.res-full` at capacity. `projectedYields` subtracts projected spoilage so the topbar shows what's actually kept — at a full store the net correctly reads ~0.
+
+### Work levy (third civic law)
+
+Standing Governance law converting the food surplus into the build economy — the player's own lever on the stone bottleneck, vs. waiting on a random merchant. `state.workLevy: boolean`, default false.
+
+- `WORK_LEVY_FOOD_COST = 12` → `WORK_LEVY_WOOD_YIELD = 3` + `WORK_LEVY_STONE_YIELD = 2`, applied at step 1 with the other settlement-level yields.
+- **Guarded on stores including the current harvest.** If they can't cover the ration the levy is skipped for the year with a chronicle line. **The levy must never be able to push food negative and trigger the step 5 famine.**
+- **No trigger modal** — unlike the elder/child laws it's opt-in, so it just appears in the Governance panel once the Long House stands. Don't add a third blocking overlay.
+- `toggleWorkLevy` in turn.ts, mirroring `toggleElderPolicy`/`toggleChildPolicy`.
+
+### Law-change friction (`MORALE_LAW_CHANGE_COST = -3`)
+
+Every Governance flip applies this **on top of** the destination policy's own delta, in both directions, via `lawChangeDelta(policyDelta)` (exported from turn.ts, used by ui.ts so the displayed number can't drift from the applied one).
+
+**Why:** the elder law was a free morale pump — respected (+5) then working (−3) nets +2 per round trip, repeatable by clicking back and forth in the panel. The flat cost makes no cycle of flips net-positive. Applied uniformly to all three laws so they behave by one rule; first-time decision handlers (`acceptElderWork`/`respectElders`/`setChildrenWorking`/`setChildrenFree`) are **untouched** — the original choice stays as authored.
 
 ### Bandits (Exarum stragglers)
 
@@ -389,6 +422,7 @@ Landing before ship — narrative beat: make landfall first, then decide the ves
 3.   Advance tile states (cultivating→worked, worked→fallow, fallow→wild)
 4.   Scripted wave (if due) OR random event
 5.   Food consumption; chronicle line; famine kills (youngest first)
+5.5  Spoilage — food held above `foodCapacity` partly rots
 6.   Reconcile (shed workers if adults died — scout first, then furthest)
 7.   Growth check (food ≥ pop × 3 AND morale ≥ 50 → +1 baby)
 8.   Population tally; game-over check; year++
@@ -399,6 +433,7 @@ Landing before ship — narrative beat: make landfall first, then decide the ves
 - Step 0.5: boat after home aging, before yields — returning crew counts toward this turn's food.
 - Step 3 < 4: cultivating tiles don't yield this turn.
 - Step 4 < 5: food events settle before famine check, keeping food display truthful.
+- Step 5 < 5.5 < 7: eat *before* spoiling (nobody starves beside grain that rotted the same year, and the "Consumed N food" line stays true), spoil *before* the growth check (a surplus that won't survive the winter can't buy a birth).
 - Reconcile at 0 (elders) and 6 (famine) — one cleanup per pop delta.
 
 **Topbar `projectedYields`** counts worked + cultivating, ignores reserves/events. Capacity estimate, responsive to +button clicks.

@@ -111,6 +111,9 @@ html, body {
 .res .delta.neg { color: var(--danger); }
 .res .delta.neutral { color: var(--muted); }
 
+/* Stores at capacity — the surplus is about to start rotting. */
+.res.res-full .value { color: var(--gold); }
+
 .res.mood .value { min-width: 3ch; }
 .res.mood-good .value { color: var(--good); }
 .res.mood-mid .value { color: var(--gold); }

@@ -1,4 +1,4 @@
-export const VERSION = "v0.8.5";
+export const VERSION = "v0.9";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
@@ -158,6 +158,25 @@ export const HOUSE_CAPACITY = 6;          // each new house adds this many to po
 export const HOUSE_FOOD_YIELD = 2;        // food/year from each house's garden plot
 export const HOUSE_COST_BASE = { wood: 8, stone: 3 };
 export const HOUSE_COST_INCREMENT = { wood: 2, stone: 1 };
+
+// Food storage — grain pits, lofts, and larders only hold so much. Anything
+// above capacity at the end of the year spoils, so a surplus has to be *spent*
+// (traded, built with, levied) rather than banked forever. This is the Hamurabi
+// rats, and it is what stops "put everyone on food" from being a free strategy.
+//
+// Spoilage takes a FRACTION of the overflow, not all of it, so the store settles
+// at cap + surplus × (1 − rate)/rate — at rate 0.5 that is cap + one year's
+// surplus. A soft ceiling, never a hard clamp. That matters: a hard
+// clamp at cap would collide with the pop × GROWTH_FOOD_PER_POP birth gate.
+// FOOD_STORAGE_BASE is the smallest value where every zero-surplus combination
+// of (pop, granary, houses) still clears that gate; see sim/food_storage_cap.py.
+// The rate is the soft knob for tuning how harsh spoilage feels — the cap is
+// what actually creates the decision. Don't lower the base without re-running
+// the sim.
+export const FOOD_STORAGE_BASE = 100;      // pits and lofts the starter huts already have
+export const GRANARY_STORAGE_BONUS = 80;   // the granary's real job
+export const HOUSE_STORAGE_BONUS = 10;     // each house's own larder
+export const FOOD_SPOILAGE_RATE = 0.5;     // fraction of the overflow lost each year
 
 // Road tiers — both extend reach but at different distances and costs.
 // Dirt path: cheap, available from turn 1. Acts as a +1 reach anchor (same as a
@@ -379,6 +398,8 @@ export interface GameState {
   pendingElderDecision: boolean;  // true while waiting for player to decide
   childPolicy: "working" | "free" | null;  // null = decision not yet made
   pendingChildDecision: boolean;  // true while waiting for player to decide
+  workLevy: boolean;              // standing law: feed work gangs for wood + stone
+  spoilageNotified: boolean;      // one-shot: player told why food is rotting
   buildings: Record<BuildingId, boolean>;
   unlockedBuildings: Record<BuildingId, boolean>;  // dedup flag for per-building unlock chronicle lines
   townUpgrades: Record<TownUpgradeId, boolean>;
@@ -523,6 +544,25 @@ export const CHILD_WORK_FOOD_YIELD = 0.5;
 export const CHILD_WORK_WOOD_YIELD = 0.3;
 export const MORALE_CHILD_WORK_CHOICE = -4;
 export const MORALE_CHILD_FREE_CHOICE = 3;
+
+// Work levy — the third civic law, and the one that turns a food surplus into
+// the build economy. The settlement feeds work gangs out of the stores; they
+// cut and haul in return. Unlike merchants it is standing and predictable, so
+// it is the player's own lever on the stone bottleneck rather than a dice roll.
+// Skipped entirely in any year the stores can't cover the ration — the levy
+// must never be able to starve the settlement it feeds.
+export const WORK_LEVY_FOOD_COST = 12;
+export const WORK_LEVY_WOOD_YIELD = 3;
+export const WORK_LEVY_STONE_YIELD = 2;
+
+// Law changes carry friction in BOTH directions (Frostpunk pattern). The flat
+// cost is charged on every Governance flip on top of the destination policy's
+// own delta, so no cycle of flips is ever net-positive morale. Without it the
+// elder law was exploitable: respected (+5) then working (-3) nets +2 per
+// round trip, repeatable for free morale.
+export const MORALE_LAW_CHANGE_COST = -3;
+export const MORALE_WORK_LEVY_ON = -2;   // hard labour, grumbling
+export const MORALE_WORK_LEVY_OFF = 2;   // the gangs stand down
 // Minimum years between consecutive waves (after jitter).
 export const SCRIPTED_WAVE_MIN_GAP = 3;
 export const SCRIPTED_WAVE_REFUGEES = 2;
@@ -725,4 +765,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v26";
+export const SAVE_KEY = "isle-of-cambrera-save-v27";
