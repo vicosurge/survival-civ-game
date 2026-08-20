@@ -11,10 +11,10 @@
     ]
   },
 
-  "klon_falls": {
+  "siege_of_destum": {
     "title": "The Siege of Destum",
     "image": null,
-    "_note": "Fires when the first scripted Exarum wave lands (~year 5). The id predates the copy — it names the fall of Klon's empire, which the siege of Destum begins; Klon himself does not die until the second wave.",
+    "_note": "Fires when the first scripted Exarum wave lands (~year 5). Klon is still alive on the walls here — his death is revealed by the second wave, not this one.",
     "paragraphs": [
       "They come in on the morning tide, in a boat that should not have survived the crossing. Six of them, and one who does not wake again after they are carried up the shingle. Nobody asks where they set out from. Everyone already knows.",
       "What they carry is worse than hunger. Destum is besieged — Destum, the old capital, whose walls the songs called unbreakable and whose gates the tax collectors of three generations rode out from. The draconian host does not raid and withdraw. It arrives, it settles, and it does not leave. Town by town, the south of Exarum has gone quiet.",

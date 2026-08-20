@@ -40,7 +40,7 @@ const TRIGGERS: { id: CutsceneId; when: (state: GameState) => boolean }[] = [
   // this row never fires. It stays in the table so the archive and the content
   // file have one complete list of cutscenes rather than two partial ones.
   { id: "founding", when: () => true },
-  { id: "klon_falls", when: (s) => s.scriptedWaves.some((w) => w.id === "wave1" && w.fired) },
+  { id: "siege_of_destum", when: (s) => s.scriptedWaves.some((w) => w.id === "wave1" && w.fired) },
   { id: "long_house_built", when: (s) => s.buildings.long_house },
   { id: "shrine_of_anata_built", when: (s) => s.buildings.shrine_of_anata },
 ];

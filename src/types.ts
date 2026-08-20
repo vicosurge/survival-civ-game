@@ -88,7 +88,7 @@ export interface ScriptedWave {
 // Milestone narrative interludes. Content lives in src/content/cutscenes.json;
 // trigger conditions live in src/cutscenes.ts. Adding one is three edits: JSON
 // entry, id here, trigger row — no changes to the turn pipeline.
-export type CutsceneId = "founding" | "klon_falls" | "long_house_built" | "shrine_of_anata_built";
+export type CutsceneId = "founding" | "siege_of_destum" | "long_house_built" | "shrine_of_anata_built";
 
 // The year is stored, not derived, because the archive lists cutscenes by when
 // they happened to *this* settlement — the Long House lands in a different year
