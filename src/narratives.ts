@@ -84,6 +84,24 @@ export const CHILD_FLIP_TO_WORK_LINE =
   "The children are called from their games. The work is light, but it is work.";
 export const CHILD_FLIP_TO_FREE_LINE =
   "The children are released from chores. The settlement chooses to feed them and ask nothing back.";
+export const LEVY_FLIP_TO_ON_LINE =
+  "Work gangs are raised and fed from the common stores. They go out at first light for timber and stone.";
+export const LEVY_FLIP_TO_OFF_LINE =
+  "The work gangs are stood down. The stores are the settlement's own again, and so are the days.";
+
+// Spoilage — the Hamurabi rats. The first year it happens gets the full
+// explanation (players need to learn the cap exists and what to do about it);
+// every year after gets the short line, since the lesson has landed.
+export const SPOILAGE_FIRST_LINE =
+  "The stores have outgrown what the settlement can keep. Damp gets into the grain pits, rats into the lofts, and part of the surplus is lost before spring. Food beyond your storage capacity spoils every year — build a granary or houses to hold more, or spend the surplus on trade, building, and work gangs before it rots.";
+export const spoilageLine = (lost: number, cap: number): string =>
+  `Rats and damp take ${lost} food — the stores hold only ${cap}.`;
+
+// Work levy — the gangs go unfed in any year the stores can't cover the ration.
+export const LEVY_UNFED_LINE =
+  "There was not enough in the stores to feed the work gangs. They stayed home, and nothing was hauled this year.";
+export const levyWorkLine = (food: number, wood: number, stone: number): string =>
+  `The work gangs are fed from the stores — ${food} food for ${wood} wood and ${stone} stone.`;
 
 // Tooltip copy on each row of the villager allocator (#20). Players new to the
 // game don't know what each job does, what tile it claims, or why a + button is

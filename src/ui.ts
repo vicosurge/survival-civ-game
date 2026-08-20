@@ -1,7 +1,8 @@
 import { HELP_SECTIONS } from "./help";
 import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReach, totalReachableCapacity } from "./map";
 import { JOB_TOOLTIPS } from "./narratives";
-import { childCount, elderCount, fertileCount, idleCount, jobCount, popCapacity, projectedYields, saveGame, totalPop } from "./state";
+import { childCount, elderCount, fertileCount,
+  foodCapacity, idleCount, jobCount, popCapacity, projectedYields, saveGame, totalPop } from "./state";
 import {
   acceptAnataSacrifice,
   acceptElderWork,
@@ -29,6 +30,8 @@ import {
   setChildrenFree,
   setChildrenWorking,
   toggleChildPolicy,
+  toggleWorkLevy,
+  lawChangeDelta,
   toggleElderPolicy,
   townUpgradeBlockerReason,
   unassignWorker,
@@ -68,6 +71,11 @@ import {
   ELDER_WORK_FOOD_YIELD,
   MORALE_CHILD_FREE_CHOICE,
   MORALE_CHILD_WORK_CHOICE,
+  MORALE_WORK_LEVY_OFF,
+  MORALE_WORK_LEVY_ON,
+  WORK_LEVY_FOOD_COST,
+  WORK_LEVY_STONE_YIELD,
+  WORK_LEVY_WOOD_YIELD,
   MORALE_ELDER_WORK_CHOICE,
   MORALE_ELDER_RESPECTED_CHOICE,
   MORALE_REFUGEE_ACCEPT,
@@ -962,13 +970,27 @@ function renderTopbar(state: GameState): void {
   const yields = projectedYields(state);
   const chips: HTMLElement[] = [
     resChip("Pop", popBreakdown),
-    resChip("Food", state.food, netDelta(yields.food.net)),
+    foodChip(state, netDelta(yields.food.net)),
     resChip("Wood", state.wood, productionDelta(yields.wood)),
     resChip("Stone", state.stone, productionDelta(yields.stone)),
     resChip("Gold", state.gold),
   ];
   chips.push(moraleChip(state.morale));
   el.append(...chips);
+}
+
+// Food carries its storage capacity the way Pop carries its own — players need
+// to see the ceiling coming, not discover it from a spoilage line.
+function foodChip(state: GameState, delta: { text: string; tone: "pos" | "neg" | "neutral" }): HTMLElement {
+  const cap = foodCapacity(state);
+  const chip = resChip("Food", `${state.food}/${cap}`, delta);
+  if (state.food >= cap) {
+    chip.classList.add("res-full");
+    chip.title = `Stores are full. Anything above ${cap} spoils at the end of the year — spend it, or raise capacity with a granary or houses.`;
+  } else {
+    chip.title = `Storage capacity ${cap}. Food held above it spoils each year.`;
+  }
+  return chip;
 }
 
 function moraleChip(morale: number): HTMLElement {
@@ -1155,7 +1177,7 @@ function townUpgradeRow(state: GameState, def: TownUpgradeDef, onChange: () => v
 function governanceOpenerRow(state: GameState, onChange: () => void): HTMLElement {
   const row = document.createElement("div");
   row.className = "building-row governance-opener-row";
-  row.title = "Review and revisit standing laws (elder labour, child labour, future).";
+  row.title = "Review and revisit standing laws (elder labour, child labour, work levy).";
 
   const name = document.createElement("span");
   name.className = "building-name";
@@ -1166,6 +1188,7 @@ function governanceOpenerRow(state: GameState, onChange: () => void): HTMLElemen
   const parts: string[] = [];
   if (state.elderPolicy !== null) parts.push(`elders: ${state.elderPolicy}`);
   if (state.childPolicy !== null) parts.push(`children: ${state.childPolicy}`);
+  if (state.workLevy) parts.push("levy: raised");
   detail.textContent = parts.length > 0 ? parts.join(", ") : "no laws yet";
 
   const btn = document.createElement("button");
@@ -1208,6 +1231,10 @@ function showGovernanceModal(state: GameState, onChange: () => void): void {
       if (entry) state.log.unshift(entry);
       rerender();
     });
+    overlay.querySelector<HTMLButtonElement>(".levy-toggle-btn")?.addEventListener("click", () => {
+      state.log.unshift(toggleWorkLevy(state));
+      rerender();
+    });
   };
 
   rerender();
@@ -1220,7 +1247,8 @@ function buildGovernanceHTML(state: GameState): string {
     const working = state.elderPolicy === "working";
     const currentLabel = working ? "Working" : "Respected";
     const flipLabel = working ? "Honour their rest" : "Put them to work";
-    const flipMorale = working ? `+${MORALE_ELDER_RESPECTED_CHOICE}` : `${MORALE_ELDER_WORK_CHOICE}`;
+    const flipDelta = lawChangeDelta(working ? MORALE_ELDER_RESPECTED_CHOICE : MORALE_ELDER_WORK_CHOICE);
+    const flipMorale = flipDelta >= 0 ? `+${flipDelta}` : `${flipDelta}`;
     const summary = working
       ? `Elders contribute light tasks (+${ELDER_WORK_FOOD_YIELD} food/year each).`
       : "Elders teach, counsel, and rest.";
@@ -1240,7 +1268,8 @@ function buildGovernanceHTML(state: GameState): string {
     const working = state.childPolicy === "working";
     const currentLabel = working ? "Working" : "Free";
     const flipLabel = working ? "Release them from chores" : "Call them to small tasks";
-    const flipMorale = working ? `+${MORALE_CHILD_FREE_CHOICE}` : `${MORALE_CHILD_WORK_CHOICE}`;
+    const flipDelta = lawChangeDelta(working ? MORALE_CHILD_FREE_CHOICE : MORALE_CHILD_WORK_CHOICE);
+    const flipMorale = flipDelta >= 0 ? `+${flipDelta}` : `${flipDelta}`;
     const summary = working
       ? `Children gather and tend (+${CHILD_WORK_FOOD_YIELD} food, +${CHILD_WORK_WOOD_YIELD} wood per child/year, floored).`
       : "Children play, learn, and grow up.";
@@ -1252,6 +1281,27 @@ function buildGovernanceHTML(state: GameState): string {
         </div>
         <p class="governance-law-summary">${summary}</p>
         <button class="child-toggle-btn">${flipLabel} (${flipMorale} morale)</button>
+      </div>
+    `);
+  }
+
+  {
+    const active = state.workLevy;
+    const currentLabel = active ? "Raised" : "Stood down";
+    const flipLabel = active ? "Stand the gangs down" : "Raise work gangs";
+    const flipDelta = lawChangeDelta(active ? MORALE_WORK_LEVY_OFF : MORALE_WORK_LEVY_ON);
+    const flipMorale = flipDelta >= 0 ? `+${flipDelta}` : `${flipDelta}`;
+    const summary = active
+      ? `Gangs are fed from the stores (−${WORK_LEVY_FOOD_COST} food, +${WORK_LEVY_WOOD_YIELD} wood, +${WORK_LEVY_STONE_YIELD} stone per year). Skipped in any year the stores can't cover the ration.`
+      : `Feed work gangs out of the stores to bring in timber and stone (−${WORK_LEVY_FOOD_COST} food, +${WORK_LEVY_WOOD_YIELD} wood, +${WORK_LEVY_STONE_YIELD} stone per year).`;
+    laws.push(`
+      <div class="governance-law">
+        <div class="governance-law-head">
+          <span class="governance-law-name">Work Levy</span>
+          <span class="governance-law-state">${currentLabel}</span>
+        </div>
+        <p class="governance-law-summary">${summary}</p>
+        <button class="levy-toggle-btn">${flipLabel} (${flipMorale} morale)</button>
       </div>
     `);
   }

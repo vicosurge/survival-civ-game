@@ -64,12 +64,14 @@ export const HELP_SECTIONS: HelpSection[] = [
     body: `
       <p>Four resources tracked in the topbar:</p>
       <ul>
-        <li><strong>Food</strong> — consumed every year by everyone (2/adult, 1/child). Surplus enables growth; deficit causes famine.</li>
+        <li><strong>Food</strong> — consumed every year by everyone (2/adult, 1/child). Surplus enables growth; deficit causes famine. <strong>Food does not keep forever</strong> — see storage below.</li>
         <li><strong>Wood</strong> — building material from forests. Doesn't decay.</li>
         <li><strong>Stone</strong> — building material from quarries. Slowest to accumulate; most quarries run dry eventually.</li>
         <li><strong>Gold</strong> — currency. Earned by trading with merchants.</li>
       </ul>
       <p>The topbar shows the projected yearly net change next to each resource — green = surplus, red = deficit.</p>
+      <p><strong>Food storage.</strong> The Food chip reads <em>held / capacity</em>. Your pits and lofts start at 100. A granary adds 80; each house adds 10 more. At the end of every year, half of whatever you hold <em>above</em> capacity spoils — damp in the grain, rats in the loft.</p>
+      <p>This means a food surplus is something to <strong>spend</strong>, not bank. Trade it to merchants, put it into houses and buildings, raise a work levy, or offer it at the shrine. Piling farmers onto every field past the point you can store the harvest just feeds the rats. The projected net change already accounts for spoilage, so what the topbar shows is what you actually keep.</p>
     `,
   },
   {
@@ -77,13 +79,14 @@ export const HELP_SECTIONS: HelpSection[] = [
     body: `
       <p>One-time settlement upgrades. Each blocks a specific negative event or adds a yield bonus:</p>
       <ul>
-        <li><strong>Granary</strong> (30f, 15w) — +0.5 food/farmer/year. Blocks locusts.</li>
+        <li><strong>Granary</strong> (30f, 15w) — +0.5 food/farmer/year, and <strong>+80 food storage capacity</strong> (100 → 180), which is its real job. Blocks locusts.</li>
         <li><strong>Palisade</strong> (20w, 25s) — Blocks bandit raids.</li>
         <li><strong>Well</strong> (10w, 15s) — Blocks wildfires.</li>
         <li><strong>Hunting Lodge</strong> (10w) — +0.5 food/hunter/year. <strong>This is a trap</strong> — once forests exhaust, the lodge is dead weight.</li>
         <li><strong>Lumber Camp</strong> (10w, 10s) — +0.5 wood/woodcutter/year. Saw pits and drying stacks lift the timber ceiling.</li>
         <li><strong>Mason's Workshop</strong> (15w, 10s) — +0.5 stone/quarryman/year. Splitting wedges and a yard for dressing stone — but seams still run finite.</li>
         <li><strong>Long House</strong> (20w, 15s) — Major civic milestone (gated at 25 pops). +8 morale, attracts more newcomers, unlocks stone roads, houses, and the Governance panel.</li>
+        <li><em>Houses</em> (repeatable, Long House gated) — besides +6 pop capacity and +2 food/year, each house adds <strong>+10 food storage</strong> from its own larder.</li>
         <li><strong>Shrine of Anata</strong> (10w, 15s) — Unlocks after 4 elders have passed. Softens the morale hit from old-age deaths. Once built, the priests may occasionally call for a great offering — accept (food → morale) or decline (morale cost).</li>
         <li><strong>Chicken Coop</strong> (5w, 3s) — Starts a flock that yields eggs each year.</li>
         <li><strong>Dock</strong> (12w, 15s) — Long House gated. Pilings, plank pier, stone breakwater. Two benefits: visiting merchants pay you +1 gold per unit sold (food and wood at 2g; stone at 3g), and your fishers reach one ring further out — beach and river tiles within 3 tiles of town become workable. Doesn't affect buy rates.</li>
@@ -141,7 +144,7 @@ export const HELP_SECTIONS: HelpSection[] = [
   {
     title: "Civic Decisions & Governance",
     body: `
-      <p>Two civic laws, both surfaced from the Long House.</p>
+      <p>Three civic laws, all surfaced from the Long House.</p>
       <p><strong>The Elder Question</strong> fires once 5 adults have passed into elder. Choose:</p>
       <ul>
         <li><strong>Working</strong>: elders contribute +0.5 food/elder/year, costs −3 morale.</li>
@@ -152,7 +155,8 @@ export const HELP_SECTIONS: HelpSection[] = [
         <li><strong>Working</strong>: children gather kindling and tend gardens (+0.5 food, +0.3 wood per child/year, floored), −4 morale.</li>
         <li><strong>Free</strong>: children play and learn, +3 morale.</li>
       </ul>
-      <p><strong>Governance panel</strong>: open from the Long House row in the build column. Both laws are revisitable — but every flip re-applies the same morale cost as the original decision. Reversibility doesn't make the choice weightless; the people remember.</p>
+      <p><strong>The Work Levy</strong> is available from the Governance panel as soon as the Long House stands — nobody forces the question, you raise it when you want it. While it's raised, the settlement feeds work gangs out of the common stores: <strong>−12 food for +3 wood and +2 stone every year</strong>. It's skipped automatically in any year the stores can't cover the ration, so it can never starve you. This is your own lever on the stone bottleneck — steady and predictable, unlike waiting for a merchant, and the natural place for a food surplus to go before it spoils.</p>
+      <p><strong>Governance panel</strong>: open from the Long House row in the build column. All three laws are revisitable — but changing a standing law costs <strong>−3 morale on top of</strong> the new policy's own effect, in both directions. Reversibility doesn't make the choice weightless; the people remember, and no amount of flipping back and forth wins you morale.</p>
     `,
   },
   {

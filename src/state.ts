@@ -9,11 +9,16 @@ import {
   DEPARTURE_TIMINGS,
   DepartureChoices,
   ELDER_AGE,
+  ELDER_WORK_FOOD_YIELD,
   FOOD_PER_ADULT,
   FOOD_PER_CHILD,
   GameState,
+  FOOD_SPOILAGE_RATE,
+  FOOD_STORAGE_BASE,
   GRANARY_FARMER_BONUS,
+  GRANARY_STORAGE_BONUS,
   HOUSE_FOOD_YIELD,
+  HOUSE_STORAGE_BONUS,
   HUNTING_LODGE_HUNTER_BONUS,
   INITIAL_HUT_CAPACITY,
   HOUSE_CAPACITY,
@@ -26,6 +31,9 @@ import {
   MORALE_MIN,
   MORALE_START,
   NEWCOMER_AGE_RANGE,
+  WORK_LEVY_FOOD_COST,
+  WORK_LEVY_STONE_YIELD,
+  WORK_LEVY_WOOD_YIELD,
   ORIGINS,
   SHIP_FATES,
   Pop,
@@ -135,6 +143,8 @@ export function newGame(departure: DepartureChoices): GameState {
     elderPolicy: null,
     pendingElderDecision: false,
     childPolicy: null,
+    workLevy: false,
+    spoilageNotified: false,
     pendingChildDecision: false,
     buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, lumber_camp: false, mason_workshop: false, long_house: false, shrine_of_anata: false, chicken_coop: false, dock: false },
     unlockedBuildings: { granary: true, palisade: true, well: true, hunting_lodge: true, lumber_camp: true, mason_workshop: true, long_house: false, shrine_of_anata: false, chicken_coop: true, dock: false },
@@ -261,6 +271,21 @@ export function popCapacity(state: GameState): number {
   return INITIAL_HUT_CAPACITY + state.houses * HOUSE_CAPACITY;
 }
 
+// Derived like popCapacity — no save field. Anything held above this at the end
+// of the year partly spoils (turn.ts step 5.5).
+export function foodCapacity(state: GameState): number {
+  return FOOD_STORAGE_BASE
+    + (state.buildings.granary ? GRANARY_STORAGE_BONUS : 0)
+    + state.houses * HOUSE_STORAGE_BONUS;
+}
+
+// How much of a given end-of-year store would rot. Shared by the turn pipeline
+// and the topbar projection so the two can never disagree.
+export function spoilageFor(state: GameState, food: number): number {
+  const over = food - foodCapacity(state);
+  return over > 0 ? Math.floor(over * FOOD_SPOILAGE_RATE) : 0;
+}
+
 export function jobCount(state: GameState, job: Job): number {
   if (job === "scout") return state.scouts;
   return currentWorkers(state, job);
@@ -323,6 +348,13 @@ export function projectedYields(state: GameState): {
     stoneProd += y.stone ?? 0;
   }
 
+  // Working elders contribute light tasks. Mirrors turn.ts step 1 — without it
+  // the topbar understated production for anyone running the elder-work law.
+  if (state.elderPolicy === "working") {
+    const elders = state.pops.filter((p) => p.age + 1 >= ELDER_AGE && p.age + 1 < p.lifespan).length;
+    foodProd += Math.floor(elders * ELDER_WORK_FOOD_YIELD);
+  }
+
   // Working children contribute small floored yields. Same convention as elder
   // labour — the policy is reversible via Governance.
   if (state.childPolicy === "working") {
@@ -339,9 +371,22 @@ export function projectedYields(state: GameState): {
     if (futureAge >= ADULT_AGE) futureAdults += 1;
     else futureKids += 1;
   }
-  const foodCons = futureAdults * FOOD_PER_ADULT + futureKids * FOOD_PER_CHILD;
+  let foodCons = futureAdults * FOOD_PER_ADULT + futureKids * FOOD_PER_CHILD;
+
+  // Work levy — the gangs eat from the same stores they haul for. Only counted
+  // when the stores can actually cover the ration, matching the turn-pipeline
+  // guard, so the projection doesn't promise wood the levy won't deliver.
+  if (state.workLevy && state.food >= WORK_LEVY_FOOD_COST) {
+    foodCons += WORK_LEVY_FOOD_COST;
+    woodProd += WORK_LEVY_WOOD_YIELD;
+    stoneProd += WORK_LEVY_STONE_YIELD;
+  }
+
+  // Food that would spoil is food the player never gets to keep — showing the
+  // raw surplus here would have the topbar promising growth that rots.
+  const kept = foodProd - foodCons - spoilageFor(state, state.food + foodProd - foodCons);
   return {
-    food: { production: foodProd, consumption: foodCons, net: foodProd - foodCons },
+    food: { production: foodProd, consumption: foodCons, net: kept },
     wood: woodProd,
     stone: stoneProd,
   };

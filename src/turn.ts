@@ -11,11 +11,17 @@ import {
   ELDER_FLIP_TO_RESPECT_LINE,
   ELDER_FLIP_TO_WORK_LINE,
   FIRST_HOUSE_LINE,
+  LEVY_FLIP_TO_OFF_LINE,
+  LEVY_FLIP_TO_ON_LINE,
+  LEVY_UNFED_LINE,
   QUARRY_EXHAUSTED_LINE,
+  SPOILAGE_FIRST_LINE,
   TOWN_UPGRADE_BUILD_LINE,
   additionalHouseLine,
+  levyWorkLine,
+  spoilageLine,
 } from "./narratives";
-import { adultCount, applyMorale, childCount, elderCount, fertileCount, idleCount, makeBabyPop, makeNewcomerPop, popCapacity, totalPop } from "./state";
+import { adultCount, applyMorale, childCount, elderCount, fertileCount, foodCapacity, idleCount, makeBabyPop, makeNewcomerPop, popCapacity, spoilageFor, totalPop } from "./state";
 import {
   ADULT_AGE,
   ANATA_SACRIFICE_DECLINE_MORALE,
@@ -74,9 +80,12 @@ import {
   MORALE_CHILD_WORK_CHOICE,
   MORALE_FOUNDER_EXTRA,
   MORALE_GROWTH_GATE,
+  MORALE_LAW_CHANGE_COST,
   MORALE_OLD_AGE_DEATH,
   MORALE_REFUGEE_ACCEPT,
   MORALE_REFUGEE_REJECT,
+  MORALE_WORK_LEVY_OFF,
+  MORALE_WORK_LEVY_ON,
   Pop,
   RoadType,
   SCOUT_REVEAL_PER_YEAR,
@@ -86,8 +95,11 @@ import {
   TownUpgradeId,
   TradeBasket,
   TradeResource,
-  basketGoldDelta,
+  WORK_LEVY_FOOD_COST,
+  WORK_LEVY_STONE_YIELD,
+  WORK_LEVY_WOOD_YIELD,
   YIELD_PER_WORKER,
+  basketGoldDelta,
 } from "./types";
 
 function randInt(lo: number, hi: number): number {
@@ -289,6 +301,25 @@ export function endYear(state: GameState): void {
     }
   }
 
+  // Work levy — gangs fed out of the stores in exchange for timber and stone.
+  // Guarded on current stores *including* this year's harvest: the levy must
+  // never be able to push food negative and trigger the famine in step 5.
+  if (state.workLevy) {
+    const storesAfterHarvest = state.food + Math.floor(foodGain);
+    if (storesAfterHarvest >= WORK_LEVY_FOOD_COST) {
+      foodGain -= WORK_LEVY_FOOD_COST;
+      woodGain += WORK_LEVY_WOOD_YIELD;
+      stoneGain += WORK_LEVY_STONE_YIELD;
+      state.log.unshift({
+        year,
+        text: levyWorkLine(WORK_LEVY_FOOD_COST, WORK_LEVY_WOOD_YIELD, WORK_LEVY_STONE_YIELD),
+        tone: "neutral",
+      });
+    } else {
+      state.log.unshift({ year, text: LEVY_UNFED_LINE, tone: "bad" });
+    }
+  }
+
   foodGain = Math.floor(foodGain);
   woodGain = Math.floor(woodGain);
   state.food += foodGain;
@@ -433,6 +464,25 @@ export function endYear(state: GameState): void {
       text: `Famine strikes. ${parts.join(" and ")} lost to starvation.${founderNote}`,
       tone: "bad",
     });
+  }
+
+  // 5.5 Spoilage. Runs AFTER eating so nobody starves beside grain that rotted
+  // the same year, and BEFORE the growth check so a surplus that won't survive
+  // the winter can't buy a birth. Takes a fraction of the overflow, not all of
+  // it — the store settles just above cap rather than being clamped hard,
+  // which is what keeps the pop × 3 birth gate reachable (sim/food_storage_cap.py).
+  {
+    const lost = spoilageFor(state, state.food);
+    if (lost > 0) {
+      state.food -= lost;
+      const line = spoilageLine(lost, foodCapacity(state));
+      if (!state.spoilageNotified) {
+        state.spoilageNotified = true;
+        state.log.unshift({ year, text: `${line} ${SPOILAGE_FIRST_LINE}`, tone: "bad" });
+      } else {
+        state.log.unshift({ year, text: line, tone: "bad" });
+      }
+    }
   }
 
   // 6. Reconcile assignments with current adult population.
@@ -1034,26 +1084,52 @@ export function setChildrenFree(state: GameState): LogEntry {
   };
 }
 
-// Governance-panel toggles. Each flip re-applies the original morale cost — so
-// reversibility doesn't make the choice weightless. Frostpunk's pattern: laws
-// can change, but every change carries the same friction as the first time.
+// Governance-panel toggles. Changing a standing law costs morale on top of the
+// destination policy's own delta, in BOTH directions — reversibility must not
+// make the choice weightless. Frostpunk's pattern: laws can change, but every
+// change carries friction. Without the flat cost the elder law was a free
+// morale pump: respected (+5) then working (-3) nets +2 per round trip, so a
+// player could sit in the Governance panel clicking back and forth. The
+// Frostpunk framing is that every change carries friction — this is that
+// friction, and it makes no cycle of flips net-positive.
+export function lawChangeDelta(policyDelta: number): number {
+  return policyDelta + MORALE_LAW_CHANGE_COST;
+}
+
+function moraleNote(delta: number): string {
+  return delta >= 0 ? `(+${delta} morale)` : `(${delta} morale)`;
+}
+
 export function toggleElderPolicy(state: GameState): LogEntry | null {
   if (state.elderPolicy === null) return null;
   if (state.elderPolicy === "working") {
     state.elderPolicy = "respected";
-    applyMorale(state, MORALE_ELDER_RESPECTED_CHOICE);
+    const delta = lawChangeDelta(MORALE_ELDER_RESPECTED_CHOICE);
+    applyMorale(state, delta);
     return {
       year: state.year,
-      text: `${ELDER_FLIP_TO_RESPECT_LINE} (+${MORALE_ELDER_RESPECTED_CHOICE} morale)`,
-      tone: "good",
+      text: `${ELDER_FLIP_TO_RESPECT_LINE} ${moraleNote(delta)}`,
+      tone: delta >= 0 ? "good" : "neutral",
     };
   }
   state.elderPolicy = "working";
-  applyMorale(state, MORALE_ELDER_WORK_CHOICE);
+  const delta = lawChangeDelta(MORALE_ELDER_WORK_CHOICE);
+  applyMorale(state, delta);
   return {
     year: state.year,
-    text: `${ELDER_FLIP_TO_WORK_LINE} (${MORALE_ELDER_WORK_CHOICE} morale)`,
+    text: `${ELDER_FLIP_TO_WORK_LINE} ${moraleNote(delta)}`,
     tone: "neutral",
+  };
+}
+
+export function toggleWorkLevy(state: GameState): LogEntry {
+  state.workLevy = !state.workLevy;
+  const delta = lawChangeDelta(state.workLevy ? MORALE_WORK_LEVY_ON : MORALE_WORK_LEVY_OFF);
+  applyMorale(state, delta);
+  return {
+    year: state.year,
+    text: `${state.workLevy ? LEVY_FLIP_TO_ON_LINE : LEVY_FLIP_TO_OFF_LINE} ${moraleNote(delta)}`,
+    tone: delta >= 0 ? "good" : "neutral",
   };
 }
 
@@ -1085,18 +1161,20 @@ export function toggleChildPolicy(state: GameState): LogEntry | null {
   if (state.childPolicy === null) return null;
   if (state.childPolicy === "working") {
     state.childPolicy = "free";
-    applyMorale(state, MORALE_CHILD_FREE_CHOICE);
+    const delta = lawChangeDelta(MORALE_CHILD_FREE_CHOICE);
+    applyMorale(state, delta);
     return {
       year: state.year,
-      text: `${CHILD_FLIP_TO_FREE_LINE} (+${MORALE_CHILD_FREE_CHOICE} morale)`,
-      tone: "good",
+      text: `${CHILD_FLIP_TO_FREE_LINE} ${moraleNote(delta)}`,
+      tone: delta >= 0 ? "good" : "neutral",
     };
   }
   state.childPolicy = "working";
-  applyMorale(state, MORALE_CHILD_WORK_CHOICE);
+  const delta = lawChangeDelta(MORALE_CHILD_WORK_CHOICE);
+  applyMorale(state, delta);
   return {
     year: state.year,
-    text: `${CHILD_FLIP_TO_WORK_LINE} (${MORALE_CHILD_WORK_CHOICE} morale)`,
+    text: `${CHILD_FLIP_TO_WORK_LINE} ${moraleNote(delta)}`,
     tone: "neutral",
   };
 }
