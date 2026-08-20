@@ -2,7 +2,7 @@ import { render } from "./render";
 import { clearSave, loadGame, newGame, saveGame } from "./state";
 import { endYear } from "./turn";
 import { DepartureChoices, OriginId } from "./types";
-import { attachCanvasClick, initUI, maybeShowAnataSacrificeModal, maybeShowChildDecisionModal, maybeShowElderDecisionModal, maybeShowGameOverFeedback, maybeShowIntro, maybeShowRefugeesModal, maybeShowTradeModal, renderUI, showDepartureWizard } from "./ui";
+import { attachCanvasClick, initUI, maybeShowAnataSacrificeModal, maybeShowChildDecisionModal, maybeShowCutscene, maybeShowElderDecisionModal, maybeShowGameOverFeedback, maybeShowIntro, maybeShowRefugeesModal, maybeShowTradeModal, renderUI, showDepartureWizard } from "./ui";
 
 const canvas = document.getElementById("map") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -41,6 +41,10 @@ function redraw(): void {
     redraw();
   });
   maybeShowAnataSacrificeModal(state, () => {
+    saveGame(state);
+    redraw();
+  });
+  maybeShowCutscene(state, () => {
     saveGame(state);
     redraw();
   });

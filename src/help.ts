@@ -209,4 +209,13 @@ export const HELP_SECTIONS: HelpSection[] = [
       <p><strong>Anata's offering</strong>: once the shrine stands, the priests may call for a sacrifice. Accept costs food but lifts spirits; decline costs morale.</p>
     `,
   },
+  {
+    title: "Remembrances",
+    body: `
+      <p>At a handful of milestones the game stops and tells you a story — the landing, the first news from the war across the strait, the raising of the Long House, the founding of the shrine. These are <em>remembrances</em>: three or four paragraphs of world, with no mechanical effect whatsoever.</p>
+      <p>Every one has a <strong>Skip</strong> button, and skipping costs you nothing — no resources, no morale, no missed content. The ticking parts of the game are all in the panels around the map; a remembrance is purely for the players who want to know what this place is.</p>
+      <p><strong>Remembrances</strong> (in the chronicle strip, top left) re-opens any you have already reached, listed by the year it happened in <em>your</em> settlement. Ones you haven't reached yet don't appear — no spoilers. If you skipped something, that's where to go and read it.</p>
+      <p>To turn them off entirely, tick <strong>Skip cutscenes on future games</strong> on the opening scroll. They'll still be collected in Remembrances for later.</p>
+    `,
+  },
 ];

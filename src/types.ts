@@ -1,4 +1,4 @@
-export const VERSION = "v0.9";
+export const VERSION = "v0.9.1";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
@@ -83,6 +83,19 @@ export interface ScriptedWave {
   id: ScriptedWaveId;
   year: number;
   fired: boolean;
+}
+
+// Milestone narrative interludes. Content lives in src/content/cutscenes.json;
+// trigger conditions live in src/cutscenes.ts. Adding one is three edits: JSON
+// entry, id here, trigger row — no changes to the turn pipeline.
+export type CutsceneId = "founding" | "klon_falls" | "long_house_built" | "shrine_of_anata_built";
+
+// The year is stored, not derived, because the archive lists cutscenes by when
+// they happened to *this* settlement — the Long House lands in a different year
+// in every run.
+export interface SeenCutscene {
+  id: CutsceneId;
+  year: number;
 }
 
 export type TradeAction = "sell" | "buy";
@@ -393,6 +406,8 @@ export interface GameState {
   merchantSecondShipPending: boolean;   // tier-2 only: a second merchant arrives after the current one resolves
   pendingRefugees: { count: number; text: string; year: number } | null;
   pendingAnataSacrifice: boolean;  // priests have asked for an offering to Anata; blocks end-year
+  pendingCutscene: CutsceneId | null;  // milestone interlude awaiting the player; blocks end-year
+  seenCutscenes: SeenCutscene[];       // read or skipped, with the year it fired; drives the archive
   elderTransitions: number;     // lifetime count of adult→elder crossings
   elderPolicy: "working" | "respected" | null;  // null = decision not yet made
   pendingElderDecision: boolean;  // true while waiting for player to decide
@@ -765,4 +780,4 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v27";
+export const SAVE_KEY = "isle-of-cambrera-save-v28";

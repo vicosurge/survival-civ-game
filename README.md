@@ -16,6 +16,8 @@ When enough pops transition to elder, the settlement faces a civic decision: put
 
 Food does not keep forever. Your stores have a capacity — grain pits and lofts to begin with, far more once a granary stands and houses add their own larders — and half of whatever you hold above it spoils each winter. A surplus is something to spend, not bank: trade it, build with it, offer it at the shrine, or raise a work levy that feeds work gangs out of the stores and gets timber and stone back. Piling every villager onto the fields past the point you can store the harvest just feeds the rats.
 
+At a handful of milestones the game stops and tells you a story — the landing, the first news of the war across the strait, the raising of the long house, the founding of the shrine. These *remembrances* have no mechanical effect whatsoever, and every one has a Skip button that costs you nothing. The ticking parts of the game are all in the panels; this is where the world gets room to breathe, for the players who want it. Anything you've reached is re-readable from the **Remembrances** panel, listed by the year it happened in your settlement — and anything you haven't reached yet doesn't appear there, so the list is never a spoiler.
+
 Two town-centre upgrades — the Communal Garden and the Workshop Yard — give the settlement a small passive food and wood trickle from turn 1, so a settlement at 100% farming still has *some* construction headroom. They don't replace woodcutters or quarrymen, but they keep the build economy from flatlining. Once you can afford them, the Lumber Camp and Mason's Workshop lift the per-worker yields for wood and stone — finite seams still run dry, but the ceiling is higher.
 
 Roads come in two tiers. A dirt path is cheap and available from turn 1 — a +1 reach anchor, handy for pulling an outlying stone or fertile tile into your territory before the Long House stands. Stone roads are Long House gated and reach further (+2), proper highways that pave over older paths. A chicken coop starts a fast-growing flock that produces eggs annually and auto-culls surplus birds at the flock cap. Once the Shrine of Anata stands, the priests may call for a great offering — accept (food → morale) or decline (morale cost). Merchants arrive with a cargo model: their wagon has a fixed capacity, and buying from them frees slots so you can sell more in the same visit. The more often you strike a deal, the bigger the wagons that come back — and once your Long House stands, building a dock lifts every sell rate by a gold per unit and lets your fishers cast a ring further along the shore and upriver.
@@ -61,6 +63,9 @@ src/
   turn.ts             end-year resolution pipeline
   render.ts           canvas renderer
   ui.ts               DOM overlay (topbar, allocator, tile info, log, overlays)
+  cutscenes.ts        milestone interlude triggers + archive helpers
+  narratives.ts       chronicle prose kept out of the game logic
+  content/            player-facing prose as JSON (cutscenes.json)
   style.css           retro-inspired palette (muted browns, gold accents)
 feedback-worker/      Cloudflare Worker — stores alpha tester feedback in D1
   wrangler.toml       Worker config + D1 binding + route (cambrera.digimente.xyz/feedback*)
