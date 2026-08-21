@@ -23,7 +23,7 @@ export const HELP_SECTIONS: HelpSection[] = [
         <li><strong>Elders</strong> (35+) eat 2 food/year. Don't reproduce. Whether they work depends on the elder civic decision (see Governance).</li>
       </ul>
       <p>Pops live ~35–55 years. The original founders carry an extra emotional weight — losing one of them hits morale harder than a non-founder death.</p>
-      <p><strong>Famine kills children first</strong> (delayed labour debt, not immediate crisis). Bandits steal food, not lives — a recoverable shock that erodes surplus.</p>
+      <p><strong>Famine kills children first</strong> (delayed labour debt, not immediate crisis). Bandit raids take food, not children — though a camp you let grow strong will start taking lives too, and your militia are the ones who pay first.</p>
     `,
   },
   {
@@ -54,9 +54,10 @@ export const HELP_SECTIONS: HelpSection[] = [
         <li><strong>Quarryman</strong> (stone): +1 stone/year. Drains the seam; eventually exhausts.</li>
         <li><strong>Fisher</strong> (beach/river): variable yield (1–3 food, or 2–4 on rich waters). Fish replenish.</li>
         <li><strong>Scout</strong>: reveals new tiles at the frontier. Doesn't occupy a tile. Auto-retires when the island is fully mapped.</li>
+        <li><strong>Militia</strong> (needs a Muster Field): doesn't occupy a tile and produces nothing. Each militiaman answers for <strong>2 points</strong> of a bandit camp's strength — enough of them turns a raid back with nothing taken, and they're who you send on a sortie. See <em>Bandits &amp; Defence</em>.</li>
       </ul>
       <p><strong>Food job triad — keep all three.</strong> Hunter is transitory (drains game), farmer is sustainable, fisher is variable. Each rewards a different rhythm of play.</p>
-      <p><strong>During famine</strong>, workers shed in this order: scout → quarryman → woodcutter → hunter → fisher → farmer. Furthest-from-town tiles are abandoned first; close-in productive work is preserved.</p>
+      <p><strong>During famine</strong>, workers shed in this order: scout → militia → quarryman → woodcutter → hunter → fisher → farmer. Furthest-from-town tiles are abandoned first; close-in productive work is preserved.</p>
     `,
   },
   {
@@ -80,7 +81,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       <p>One-time settlement upgrades. Each blocks a specific negative event or adds a yield bonus:</p>
       <ul>
         <li><strong>Granary</strong> (30f, 15w) — +0.5 food/farmer/year, and <strong>+80 food storage capacity</strong> (100 → 180), which is its real job. Blocks locusts.</li>
-        <li><strong>Palisade</strong> (20w, 25s) — Blocks bandit raids.</li>
+        <li><strong>Palisade</strong> (20w, 25s) — Turns back raiders from a camp of strength 3 or less. Above that the band is too big for the wall, and it only halves what they carry off.</li>
         <li><strong>Well</strong> (10w, 15s) — Blocks wildfires.</li>
         <li><strong>Hunting Lodge</strong> (10w) — +0.5 food/hunter/year. <strong>This is a trap</strong> — once forests exhaust, the lodge is dead weight.</li>
         <li><strong>Lumber Camp</strong> (10w, 10s) — +0.5 wood/woodcutter/year. Saw pits and drying stacks lift the timber ceiling.</li>
@@ -89,6 +90,7 @@ export const HELP_SECTIONS: HelpSection[] = [
         <li><em>Houses</em> (repeatable, Long House gated) — besides +6 pop capacity and +2 food/year, each house adds <strong>+10 food storage</strong> from its own larder.</li>
         <li><strong>Shrine of Anata</strong> (10w, 15s) — Unlocks after 4 elders have passed. Softens the morale hit from old-age deaths. Once built, the priests may occasionally call for a great offering — accept (food → morale) or decline (morale cost).</li>
         <li><strong>Chicken Coop</strong> (5w, 3s) — Starts a flock that yields eggs each year.</li>
+        <li><strong>Muster Field</strong> (15w, 10s) — Appears once you know where the bandits camp. Lets you raise militia from your idle adults.</li>
         <li><strong>Dock</strong> (12w, 15s) — Long House gated. Pilings, plank pier, stone breakwater. Two benefits: visiting merchants pay you +1 gold per unit sold (food and wood at 2g; stone at 3g), and your fishers reach one ring further out — beach and river tiles within 3 tiles of town become workable. Doesn't affect buy rates.</li>
       </ul>
       <p>Buildings whose requirements aren't met yet are <em>hidden</em> from the panel until the gate is satisfied — you'll see a chronicle line announcing each unlock. Long House is the one always-visible exception (it's the goal you're working toward).</p>
@@ -129,7 +131,8 @@ export const HELP_SECTIONS: HelpSection[] = [
         <li>Old-age death −2 (softened by the Shrine of Anata)</li>
         <li>Birth +2, child coming of age +2</li>
         <li>Welcoming refugees +4, turning them away −3</li>
-        <li>Bandit raid: −3 if they take food, −2 if your stores were empty</li>
+        <li>Bandit raid: −3 if they take food, −2 if your stores were empty; −6 per villager killed in a severe raid</li>
+        <li>Sortie against the camp: +6 if you burn it, −4 if it goes badly</li>
         <li>Civic decisions (elder/child laws): see Governance</li>
         <li>Events: bountiful harvest +5, locusts −4, mild winter +3, etc.</li>
       </ul>
@@ -137,7 +140,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       <ul>
         <li>Below 50: <strong>no births fire</strong>. The most important gate to keep above.</li>
         <li>At/above 80: newcomer events fire ×2 more often.</li>
-        <li>At/below 30: bandit events fire ×2 more often.</li>
+        <li>At/below 30: a new bandit band is ×2 as likely to settle nearby.</li>
       </ul>
     `,
   },
@@ -203,10 +206,27 @@ export const HELP_SECTIONS: HelpSection[] = [
     body: `
       <p>Each year, one event fires (or one of the four scripted Exarum-survivor waves, on schedule). Random events are weighted by morale and your settlement's situation.</p>
       <p><strong>Good events</strong>: bountiful harvest, mild winter, traders, newcomers, ruins discovered.</p>
-      <p><strong>Bad events</strong>: locusts, bandits (Exarum stragglers — they steal food, not lives), forest fire, harsh winter.</p>
+      <p><strong>Bad events</strong>: locusts, bandits (Exarum stragglers — the roll founds a camp that then stays; see <em>Bandits &amp; Defence</em>), forest fire, harsh winter.</p>
       <p><strong>Blocked events</strong>: certain buildings prevent specific bad events. The chronicle still notes the threat — "The locusts are kept out by the granary's seal" — so you see the building earning its keep.</p>
       <p><strong>Refugees</strong>: most refugee arrivals (random newcomers and the four scripted waves) are <em>your choice</em> — accept (+4 morale, food cost) or turn away (−3 morale). Boat-found refugees and your own ship's crew always arrive automatically.</p>
       <p><strong>Anata's offering</strong>: once the shrine stands, the priests may call for a sacrifice. Accept costs food but lifts spirits; decline costs morale.</p>
+    `,
+  },
+  {
+    title: "Bandits & Defence",
+    body: `
+      <p>Bandits are other survivors of the Exarum war — the same crossing, the same charts — who came ashore somewhere worse and ran out of season before they ran out of hunger. They are not monsters and they are not an army.</p>
+      <p><strong>They do not raid and leave.</strong> When the bandit event fires it founds a <em>camp</em> somewhere on the island, and that camp stays until you deal with it. Every year it goes untouched it gains a point of strength, and every year it may come down on your stores. There is only ever one camp at a time.</p>
+      <p><strong>Finding it.</strong> The camp is usually pitched on ground you haven't charted — send scouts. Failing that, after the second raid your people follow them home. Either way the camp appears on the map, and the tile panel shows its strength.</p>
+      <p><strong>What it takes.</strong> A raid steals roughly 3 food for every point of camp strength your militia don't answer for, plus a few more. A grown camp against no militia is a bad winter, every other year, forever.</p>
+      <p><strong>Three ways to answer it:</strong></p>
+      <ul>
+        <li><strong>Palisade</strong> — turns a small band away outright (strength 3 or less). Once the camp outgrows the wall, it halves the theft instead. A wall is a buffer, not a permanent answer.</li>
+        <li><strong>Militia</strong> — build a Muster Field, then raise militia in the Villagers panel. Each militiaman is worth <strong>2 defence</strong>; when your defence <em>matches or exceeds</em> the camp's strength, the raid is turned back with nothing taken, and it can't kill anyone. Three spears answer a camp at full strength. They cost no food beyond their own meals — what they cost is the work they aren't doing.</li>
+        <li><strong>Sortie</strong> — click the camp tile and march on it. Your odds are militia against camp strength, shown on the button. Win and the camp is burned and its stores come home. Lose and people don't come back. One sortie per year.</li>
+      </ul>
+      <p><strong>Raids can kill.</strong> Once a known camp's strength runs 5 or more points <em>past your defence</em>, a raid may take lives as well as food — up to two. Most raids still only take food. <strong>Militia die first</strong>, and enough of them stops the killing outright: that is the point of having them. Children are never taken in a raid.</p>
+      <p>Burning a camp doesn't end the story. Another band may come ashore later and start over at strength 1.</p>
     `,
   },
   {

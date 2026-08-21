@@ -8,6 +8,8 @@ import {
   CHILD_FLIP_TO_WORK_LINE,
   CHILD_FREE_LINE,
   CHILD_WORK_LINE,
+  CAMP_FOUND_BY_RAID_LINE,
+  CAMP_FOUND_BY_SCOUTS_LINE,
   ELDER_FLIP_TO_RESPECT_LINE,
   ELDER_FLIP_TO_WORK_LINE,
   FIRST_HOUSE_LINE,
@@ -15,6 +17,17 @@ import {
   LEVY_FLIP_TO_ON_LINE,
   LEVY_UNFED_LINE,
   QUARRY_EXHAUSTED_LINE,
+  RAID_AVERTED_LINE,
+  RAID_HELD_NOTE,
+  RAID_INTRO,
+  RAID_OVER_WALL_NOTE,
+  founderLossNote,
+  raidDeathsLine,
+  raidEmptyLine,
+  raidRepelledLine,
+  raidTheftLine,
+  sortieLostLine,
+  sortieWonLine,
   SPOILAGE_FIRST_LINE,
   TOWN_UPGRADE_BUILD_LINE,
   additionalHouseLine,
@@ -32,6 +45,18 @@ import {
   ELDER_WORK_FOOD_YIELD,
   MORALE_ELDER_WORK_CHOICE,
   MORALE_ELDER_RESPECTED_CHOICE,
+  BANDIT_CAMP_GROWTH,
+  BANDIT_CAMP_MAX_STRENGTH,
+  BANDIT_KNOWN_AFTER_RAIDS,
+  BANDIT_RAID_CHANCE_BASE,
+  BANDIT_RAID_CHANCE_CAP,
+  BANDIT_RAID_CHANCE_PER_STRENGTH,
+  BANDIT_SEVERE_CHANCE,
+  BANDIT_SEVERE_KILL_DIVISOR,
+  BANDIT_SEVERE_MAX_KILLS,
+  BANDIT_SEVERE_STRENGTH,
+  BANDIT_THEFT_PER_STRENGTH,
+  BANDIT_THEFT_JITTER,
   ANATA_DEATH_TRIGGER,
   ANATA_FOUNDER_EXTRA,
   ANATA_OLD_AGE_MORALE,
@@ -68,6 +93,7 @@ import {
   HUNTING_LODGE_HUNTER_BONUS,
   IDLE_ADULT_BIRTH_CHANCE,
   Job,
+  TileJob,
   LogEntry,
   LONG_HOUSE_MORALE_BONUS,
   LONG_HOUSE_POP_GATE,
@@ -76,6 +102,11 @@ import {
   MAP_W,
   MASON_WORKSHOP_QUARRYMAN_BONUS,
   MerchantTier,
+  MILITIA_SORTIE_MIN,
+  MILITIA_STRENGTH,
+  MORALE_BANDIT_DEATH,
+  MORALE_BANDIT_EMPTY,
+  MORALE_BANDIT_THEFT,
   MORALE_CHILD_FREE_CHOICE,
   MORALE_CHILD_WORK_CHOICE,
   MORALE_FOUNDER_EXTRA,
@@ -83,12 +114,18 @@ import {
   MORALE_LAW_CHANGE_COST,
   MORALE_OLD_AGE_DEATH,
   MORALE_REFUGEE_ACCEPT,
+  MORALE_SORTIE_LOSS,
+  MORALE_SORTIE_WIN,
   MORALE_REFUGEE_REJECT,
   MORALE_WORK_LEVY_OFF,
   MORALE_WORK_LEVY_ON,
   Pop,
   RoadType,
+  PALISADE_HOLD_STRENGTH,
+  PALISADE_THEFT_REDUCTION,
   SCOUT_REVEAL_PER_YEAR,
+  SORTIE_LOOT_PER_STRENGTH,
+  SORTIE_LOSS_DIVISOR,
   STONE_ROAD_COST,
   TOWN_UPGRADES,
   TownUpgradeDef,
@@ -109,6 +146,7 @@ function randInt(lo: number, hi: number): number {
 export function endYear(state: GameState): void {
   if (state.gameOver) return;
   const year = state.year;
+  state.sortieUsedThisYear = false;
 
   // Per-turn population tally — elders passing, children coming of age, and
   //   births are merged into one chronicle entry at the end of the turn.
@@ -332,6 +370,13 @@ export function endYear(state: GameState): void {
     ? exploreFrontier(state.tiles, state.scouts * SCOUT_REVEAL_PER_YEAR)
     : 0;
 
+  // Scouts walking onto the camp's tile is the intended discovery route — the
+  // raid-tracking fallback exists only for a fully-charted island.
+  if (state.banditCamp && !state.banditCamp.known
+      && state.tiles[state.banditCamp.y][state.banditCamp.x].discovered) {
+    noteCampFound(state, year, CAMP_FOUND_BY_SCOUTS_LINE);
+  }
+
   // If the map is now fully known, stand down any remaining scouts — they have
   //   nothing left to survey. They return to the settlement as idle adults.
   let scoutsStoodDown = 0;
@@ -409,6 +454,11 @@ export function endYear(state: GameState): void {
       state.log.unshift(rollEvent(state));
     }
   }
+
+  // 4.5 Bandit camp — grow, then maybe raid. Sits between the event roll and
+  //     consumption for the same reason events do: theft settles before the
+  //     famine check, so the food display never lies about what was eaten.
+  resolveBanditCamp(state, year);
 
   // 5. Food consumption. Adults eat twice what children do.
   const adults = adultCount(state);
@@ -598,13 +648,197 @@ function emitPopulationTally(state: GameState, year: number, t: PopTally): void 
   });
 }
 
+// ─── Bandit camp ──────────────────────────────────────────────────────────────
+// The camp is a persistent adversary, not an event: it grows every year it is
+// left alone, and raids on its own schedule. Everything the player can do about
+// it lives on the tile (a sortie) or in the allocator (militia).
+
+// Violent deaths, taken militia-first. The militia count is abstract, so a
+// militiaman dying is one fertile adult removed and the count decremented —
+// which is exactly what makes standing a militia protective rather than merely
+// deterrent. Children are never taken: famine owns that role, and lifting it
+// here would stack two demographic punishments on the same cohort.
+function killDefenders(state: GameState, count: number): { deaths: number; founders: number } {
+  let deaths = 0;
+  let founders = 0;
+  for (let i = 0; i < count; i++) {
+    if (state.pops.length <= 1) break;
+    const candidates = state.pops
+      .map((p, idx) => ({ p, idx }))
+      .filter(({ p }) => p.age >= ADULT_AGE && p.age < ELDER_AGE);
+    if (candidates.length === 0) break;
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    if (pick.p.founder) founders += 1;
+    state.pops.splice(pick.idx, 1);
+    if (state.militia > 0) state.militia -= 1;
+    deaths += 1;
+  }
+  return { deaths, founders };
+}
+
+// `known` is the hinge for the sortie, the Muster Field, the map marker and the
+// severe path, so it flips in exactly one place. The lifetime counter exists
+// because `banditCamp` is transient: a camp discovered and burned in the same
+// turn would otherwise never satisfy a cutscene trigger.
+function noteCampFound(state: GameState, year: number, text: string): void {
+  const camp = state.banditCamp;
+  if (!camp || camp.known) return;
+  camp.known = true;
+  state.banditCampsFound += 1;
+  state.log.unshift({ year, text, tone: "neutral" });
+}
+
+function resolveBanditCamp(state: GameState, year: number): void {
+  const camp = state.banditCamp;
+  if (!camp) return;
+  // A camp never raids the year it appears — the founding line is that year's beat.
+  if (camp.yearFounded === year) return;
+
+  camp.strength = Math.min(camp.strength + BANDIT_CAMP_GROWTH, BANDIT_CAMP_MAX_STRENGTH);
+
+  const raidChance = Math.min(
+    BANDIT_RAID_CHANCE_BASE + camp.strength * BANDIT_RAID_CHANCE_PER_STRENGTH,
+    BANDIT_RAID_CHANCE_CAP,
+  );
+  if (Math.random() >= raidChance) return;
+
+  camp.raidsSuffered += 1;
+  if (camp.raidsSuffered >= BANDIT_KNOWN_AFTER_RAIDS) {
+    noteCampFound(state, year, CAMP_FOUND_BY_RAID_LINE);
+  }
+
+  // The palisade is a buffer, not a shield. It stops a small band outright;
+  // a band that has outgrown it gets through, carrying off half as much.
+  if (state.buildings.palisade && camp.strength <= PALISADE_HOLD_STRENGTH) {
+    state.log.unshift({ year, text: RAID_AVERTED_LINE, tone: "good" });
+    return;
+  }
+
+  const defence = state.militia * MILITIA_STRENGTH;
+  const intro = RAID_INTRO[Math.floor(Math.random() * RAID_INTRO.length)];
+
+  if (defence >= camp.strength) {
+    state.log.unshift({ year, text: raidRepelledLine(intro), tone: "good" });
+    return;
+  }
+
+  const pressure = camp.strength - defence;
+  const jitter = randInt(BANDIT_THEFT_JITTER[0], BANDIT_THEFT_JITTER[1]);
+  let desired = pressure * BANDIT_THEFT_PER_STRENGTH + jitter;
+  if (state.buildings.palisade) desired = Math.floor(desired * PALISADE_THEFT_REDUCTION);
+  const stolen = Math.min(desired, state.food);
+  state.food -= stolen;
+
+  const heldNote = defence > 0 ? RAID_HELD_NOTE : "";
+  const wallNote = state.buildings.palisade ? RAID_OVER_WALL_NOTE : "";
+
+  if (stolen <= 0) {
+    applyMorale(state, MORALE_BANDIT_EMPTY);
+    state.log.unshift({ year, text: raidEmptyLine(intro, wallNote, MORALE_BANDIT_EMPTY), tone: "bad" });
+  } else {
+    applyMorale(state, MORALE_BANDIT_THEFT);
+    state.log.unshift({
+      year,
+      text: raidTheftLine(intro, wallNote, heldNote, stolen, MORALE_BANDIT_THEFT),
+      tone: "bad",
+    });
+  }
+
+  // Severe path — a separate escalation, never a mutation of the base raid
+  // (CLAUDE.md). Three guardrails, all load-bearing: the camp must be KNOWN
+  // (the player saw it coming), the *unopposed* pressure must be severe (a
+  // standing militia holds the killing off entirely), and even then most raids
+  // still only take food.
+  if (!camp.known || pressure < BANDIT_SEVERE_STRENGTH) return;
+  if (Math.random() >= BANDIT_SEVERE_CHANCE) return;
+  const toll = Math.min(
+    Math.ceil(pressure / BANDIT_SEVERE_KILL_DIVISOR),
+    BANDIT_SEVERE_MAX_KILLS,
+  );
+  const { deaths, founders } = killDefenders(state, toll);
+  if (deaths === 0) return;
+  applyMorale(state, MORALE_BANDIT_DEATH * deaths + MORALE_FOUNDER_EXTRA * founders);
+  state.log.unshift({
+    year,
+    text: raidDeathsLine(deaths, founderLossNote(founders)),
+    tone: "bad",
+  });
+  reconcileAllocation(state);
+}
+
+// ─── Sortie ───────────────────────────────────────────────────────────────────
+// The player's half of the combat loop. Resolves immediately, like build() —
+// no pause modal, no end-of-year wait. One per year so the camp can't be ground
+// down by repeated same-turn attacks.
+
+export function militiaDefence(state: GameState): number {
+  return state.militia * MILITIA_STRENGTH;
+}
+
+// Straight contest of strengths, so the displayed odds are the whole story.
+export function sortieOdds(state: GameState): number {
+  const camp = state.banditCamp;
+  if (!camp) return 0;
+  const attack = militiaDefence(state);
+  return attack / (attack + camp.strength);
+}
+
+export function sortieBlockerReason(state: GameState): string | null {
+  if (state.gameOver) return "Game over.";
+  const camp = state.banditCamp;
+  if (!camp) return "There is no camp to march on.";
+  if (!camp.known) return "You do not know where they camp.";
+  if (state.sortieUsedThisYear) return "Your militia have already marched this year.";
+  if (state.militia < MILITIA_SORTIE_MIN) {
+    return `Needs ${MILITIA_SORTIE_MIN} militia (${state.militia} now).`;
+  }
+  return null;
+}
+
+export function canSortie(state: GameState): boolean {
+  return sortieBlockerReason(state) === null;
+}
+
+export function executeSortie(state: GameState): LogEntry | null {
+  if (!canSortie(state)) return null;
+  const camp = state.banditCamp!;
+  const year = state.year;
+  state.sortieUsedThisYear = true;
+
+  if (Math.random() < sortieOdds(state)) {
+    const loot = camp.strength * SORTIE_LOOT_PER_STRENGTH;
+    state.food += loot;
+    state.banditCamp = null;
+    state.sortiesWon += 1;
+    applyMorale(state, MORALE_SORTIE_WIN);
+    const entry: LogEntry = { year, text: sortieWonLine(loot, MORALE_SORTIE_WIN), tone: "good" };
+    state.log.unshift(entry);
+    return entry;
+  }
+
+  const losses = randInt(1, Math.ceil(state.militia / SORTIE_LOSS_DIVISOR));
+  const { deaths, founders } = killDefenders(state, losses);
+  camp.strength = Math.max(1, camp.strength - 1);
+  applyMorale(state, MORALE_SORTIE_LOSS + MORALE_FOUNDER_EXTRA * founders);
+  reconcileAllocation(state);
+  const entry: LogEntry = {
+    year,
+    text: sortieLostLine(deaths, founderLossNote(founders), MORALE_SORTIE_LOSS),
+    tone: "bad",
+  };
+  state.log.unshift(entry);
+  return entry;
+}
+
 // Shed workers until assigned total ≤ fertile adult count. Elders are past
-// working age — they don't count as labor supply. Scouts first (most flexible),
-// then quarryman/woodcutter/hunter/fisher/farmer from furthest-from-town tiles.
+// working age — they don't count as labor supply. The two tileless roles go
+// first (scouts, then militia — neither produces anything), then
+// quarryman/woodcutter/hunter/fisher/farmer from furthest-from-town tiles.
 function reconcileAllocation(state: GameState): void {
   const fertile = fertileCount(state);
   let totalAssigned =
     state.scouts +
+    state.militia +
     currentWorkers(state, "farmer") +
     currentWorkers(state, "woodcutter") +
     currentWorkers(state, "quarryman") +
@@ -617,9 +851,13 @@ function reconcileAllocation(state: GameState): void {
   state.scouts -= scoutShed;
   over -= scoutShed;
 
+  const militiaShed = Math.min(over, state.militia);
+  state.militia -= militiaShed;
+  over -= militiaShed;
+
   // Shed order: quarryman (no food) → woodcutter (no food) → hunter (food,
   // finite) → fisher (food, variable) → farmer (food, most reliable) last.
-  const prodJobs: Array<Exclude<Job, "scout">> = ["quarryman", "woodcutter", "hunter", "fisher", "farmer"];
+  const prodJobs: Array<TileJob> = ["quarryman", "woodcutter", "hunter", "fisher", "farmer"];
   for (const job of prodJobs) {
     while (over > 0) {
       const slot = findWorkerToRemove(state, job);
@@ -631,7 +869,7 @@ function reconcileAllocation(state: GameState): void {
 }
 
 // Exported for UI button handlers.
-export function assignWorker(state: GameState, x: number, y: number, job: Exclude<Job, "scout">): void {
+export function assignWorker(state: GameState, x: number, y: number, job: TileJob): void {
   const t = state.tiles[y][x];
   if (t.workers >= t.capacity) return;
   if (job === "hunter") t.hunterWorkers += 1;
@@ -649,7 +887,7 @@ export function assignWorker(state: GameState, x: number, y: number, job: Exclud
   }
 }
 
-export function unassignWorker(state: GameState, x: number, y: number, job: Exclude<Job, "scout">): void {
+export function unassignWorker(state: GameState, x: number, y: number, job: TileJob): void {
   const t = state.tiles[y][x];
   if (t.workers <= 0) return;
   if (job === "hunter" && t.terrain === "forest") t.hunterWorkers = Math.max(0, t.hunterWorkers - 1);
@@ -662,6 +900,7 @@ export function unassignWorker(state: GameState, x: number, y: number, job: Excl
 
 export function currentJobCount(state: GameState, job: Job): number {
   if (job === "scout") return state.scouts;
+  if (job === "militia") return state.militia;
   return currentWorkers(state, job);
 }
 
@@ -788,6 +1027,12 @@ export function buildBlockerReason(state: GameState, id: BuildingId): string | n
   }
   if (id === "dock" && !state.buildings.long_house) {
     return "Requires the Long House.";
+  }
+  // "Requires" is load-bearing: isBuildingHidden keys off that prefix, so the
+  // Muster Field stays hidden until there is a camp to raise a militia against,
+  // then announces itself through the normal building-unlock chronicle.
+  if (id === "muster_field" && !state.banditCamp?.known) {
+    return "Requires word of a bandit camp.";
   }
   const cost = BUILDINGS[id].cost;
   const short: string[] = [];

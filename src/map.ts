@@ -5,8 +5,9 @@ import {
   DOCK_WATER_REACH,
   FERTILE_GRASS_CHANCE,
   FISH_RICH_CHANCE,
+  BANDIT_CAMP_MIN_DISTANCE,
   GameState,
-  Job,
+  TileJob,
   JOB_TERRAINS,
   MAP_H,
   MAP_W,
@@ -309,8 +310,30 @@ export function reachableTiles(state: GameState): Array<{ x: number; y: number; 
   return out;
 }
 
+// Where a new bandit band makes its camp. Far enough out that it is never a
+// neighbour, on land nobody is working, and — by preference — on ground the
+// settlement has not charted yet, so that discovering it is a real reveal and
+// scouting has a second reason to exist. Falls back to any qualifying tile once
+// the island is fully mapped.
+export function findBanditCampSite(state: GameState): { x: number; y: number } | null {
+  const undiscovered: Array<{ x: number; y: number }> = [];
+  const discovered: Array<{ x: number; y: number }> = [];
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const t = state.tiles[y][x];
+      if (t.terrain === "water" || t.terrain === "mountain") continue;
+      if (t.workers > 0) continue;
+      if (cheby(x, y, state.town.x, state.town.y) < BANDIT_CAMP_MIN_DISTANCE) continue;
+      (t.discovered ? discovered : undiscovered).push({ x, y });
+    }
+  }
+  const pool = undiscovered.length > 0 ? undiscovered : discovered;
+  if (pool.length === 0) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // True if the tile can host another worker for this job right now.
-function tileAcceptsWorker(tile: Tile, job: Exclude<Job, "scout">): boolean {
+function tileAcceptsWorker(tile: Tile, job: TileJob): boolean {
   if (!JOB_TERRAINS[job].includes(tile.terrain)) return false;
   if (tile.state === "exhausted") return false;
   if (job === "hunter" && tile.gameExhausted) return false;
@@ -319,7 +342,7 @@ function tileAcceptsWorker(tile: Tile, job: Exclude<Job, "scout">): boolean {
 
 // The "tile bonus" the allocator optimises for when picking a tile for a given
 // job. Farmers prefer fertile grass; fishers prefer rich waters.
-function tileBonusForJob(tile: Tile, job: Exclude<Job, "scout">): number {
+function tileBonusForJob(tile: Tile, job: TileJob): number {
   if (job === "farmer") return tile.fertility;
   if (job === "fisher") return tile.fishRichness;
   return 0;
@@ -330,7 +353,7 @@ function tileBonusForJob(tile: Tile, job: Exclude<Job, "scout">): number {
 // is the tiebreaker.
 export function findEligibleTile(
   state: GameState,
-  job: Exclude<Job, "scout">,
+  job: TileJob,
 ): { x: number; y: number; tile: Tile } | null {
   let best: { x: number; y: number; tile: Tile; dist: number; bonus: number } | null = null;
   for (const { x, y, tile } of reachableTiles(state)) {
@@ -347,7 +370,7 @@ export function findEligibleTile(
 }
 
 // Total capacity reachable right now for a given job — the ceiling the allocator shows.
-export function totalReachableCapacity(state: GameState, job: Exclude<Job, "scout">): number {
+export function totalReachableCapacity(state: GameState, job: TileJob): number {
   const terrains = JOB_TERRAINS[job];
   let total = 0;
   for (const { tile } of reachableTiles(state)) {
@@ -361,7 +384,7 @@ export function totalReachableCapacity(state: GameState, job: Exclude<Job, "scou
 
 // Sum of workers for a given job. Forest tiles split hunters/woodcutters via
 // hunterWorkers; everything else maps job → tile 1:1.
-export function currentWorkers(state: GameState, job: Exclude<Job, "scout">): number {
+export function currentWorkers(state: GameState, job: TileJob): number {
   const terrains = JOB_TERRAINS[job];
   let n = 0;
   for (let y = 0; y < MAP_H; y++) {
@@ -382,7 +405,7 @@ export function currentWorkers(state: GameState, job: Exclude<Job, "scout">): nu
 // Prefers tiles furthest from town — preserves productive close-in work.
 export function findWorkerToRemove(
   state: GameState,
-  job: Exclude<Job, "scout">,
+  job: TileJob,
 ): { x: number; y: number } | null {
   const terrains = JOB_TERRAINS[job];
   let best: { x: number; y: number; dist: number } | null = null;

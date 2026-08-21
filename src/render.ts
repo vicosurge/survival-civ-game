@@ -37,6 +37,13 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState): void {
 
   drawTown(ctx, state.town.x * TILE_SIZE, state.town.y * TILE_SIZE);
 
+  // Only once the settlement knows about it — an unknown camp is on the map in
+  // state, but not on the map the player is looking at.
+  const camp = state.banditCamp;
+  if (camp && camp.known) {
+    drawBanditCamp(ctx, camp.x * TILE_SIZE, camp.y * TILE_SIZE, camp.strength);
+  }
+
   if (state.selectedTile) {
     drawSelection(ctx, state.selectedTile.x * TILE_SIZE, state.selectedTile.y * TILE_SIZE);
   }
@@ -341,6 +348,27 @@ function drawTown(ctx: CanvasRenderingContext2D, px: number, py: number): void {
   ctx.fillStyle = "#d4a94a";
   ctx.fillRect(px + 15, py + 4, 1, 10);
   ctx.fillRect(px + 15, py + 4, 5, 3);
+}
+
+// Lean-tos round a cook fire, and a spear line whose length reads the camp's
+// strength — the player should be able to see the threat growing without
+// opening the tile panel.
+function drawBanditCamp(ctx: CanvasRenderingContext2D, px: number, py: number, strength: number): void {
+  ctx.fillStyle = "#2a1a10";
+  ctx.fillRect(px + 6, py + 16, 9, 8);
+  ctx.fillRect(px + 18, py + 18, 8, 6);
+  ctx.fillStyle = "#4a3520";
+  ctx.fillRect(px + 6, py + 16, 9, 2);
+  ctx.fillRect(px + 18, py + 18, 8, 2);
+  ctx.fillStyle = "#c75a4a";
+  ctx.fillRect(px + 15, py + 12, 3, 3);
+  ctx.fillStyle = "#f4a94a";
+  ctx.fillRect(px + 16, py + 10, 1, 2);
+  ctx.fillStyle = "#d8d0c0";
+  const spears = Math.min(strength, 8);
+  for (let i = 0; i < spears; i++) {
+    ctx.fillRect(px + 4 + i * 3, py + 26, 1, 4);
+  }
 }
 
 function drawDirtPathOverlay(ctx: CanvasRenderingContext2D, px: number, py: number): void {

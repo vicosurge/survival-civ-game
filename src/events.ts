@@ -1,9 +1,13 @@
-import { exploreFrontier, hasUndiscoveredFrontier } from "./map";
+import { exploreFrontier, findBanditCampSite, hasUndiscoveredFrontier } from "./map";
+import {
+  CAMP_ALREADY_CHARTED_NOTE,
+  CAMP_FOUNDING_LINE,
+  CAMP_NOWHERE_TO_HIDE_LINE,
+} from "./narratives";
 import { applyMorale } from "./state";
 import {
   ALARM_RESPONSES,
   BANDIT_PURSUIT_YEARS,
-  BANDIT_THEFT_RANGE,
   BuildingId,
   DEPARTURE_TIMINGS,
   GameState,
@@ -15,8 +19,6 @@ import {
   MerchantTier,
   MerchantVisit,
   MORALE_ATTRACT_THRESHOLD,
-  MORALE_BANDIT_EMPTY,
-  MORALE_BANDIT_THEFT,
   MORALE_PREY_THRESHOLD,
   SCRIPTED_WAVE_REFUGEES,
   ScriptedWaveId,
@@ -128,32 +130,28 @@ const EVENTS: EventDef[] = [
   {
     id: "bandits",
     weight: 7,
-    blockedBy: "palisade",
-    blockedText: "Stragglers test the palisade in the night and withdraw empty-handed. (Averted)",
     apply: (s) => {
-      const RAID_INTRO = [
-        "A band of Exarum stragglers — washed up on a different beach, lean and angry — raid the storehouses.",
-        "Other survivors of the war, who landed elsewhere on Cambrera and turned to taking what they need, slip in at dusk.",
-        "Refugees from the war who chose the road of the knife over the road of the plough come for your stores.",
-      ];
-      const intro = RAID_INTRO[Math.floor(Math.random() * RAID_INTRO.length)];
-      if (s.food <= 0) {
-        applyMorale(s, MORALE_BANDIT_EMPTY);
-        return {
-          year: s.year,
-          text: `${intro} They find the storehouses empty and leave with nothing — but the village sleeps poorly. (${MORALE_BANDIT_EMPTY} morale)`,
-          tone: "bad",
-        };
+      // v0.10: the roll no longer *is* a raid — it founds a camp that will keep
+      // raiding until the settlement deals with it. Raids resolve in the turn
+      // pipeline (turn.ts step 4.5), not here. adjustedWeight drops this to 0
+      // while a camp already stands, so there is only ever one.
+      const site = findBanditCampSite(s);
+      if (!site) {
+        return { year: s.year, text: CAMP_NOWHERE_TO_HIDE_LINE, tone: "neutral" };
       }
-      const desired = randInt(BANDIT_THEFT_RANGE[0], BANDIT_THEFT_RANGE[1]);
-      const stolen = Math.min(desired, s.food);
-      s.food -= stolen;
-      applyMorale(s, MORALE_BANDIT_THEFT);
-      return {
-        year: s.year,
-        text: `${intro} They make off with stores before dawn. (-${stolen} food, ${MORALE_BANDIT_THEFT} morale)`,
-        tone: "bad",
+      const knownAtOnce = s.tiles[site.y][site.x].discovered;
+      s.banditCamp = {
+        x: site.x,
+        y: site.y,
+        strength: 1,
+        known: knownAtOnce,
+        raidsSuffered: 0,
+        yearFounded: s.year,
       };
+      if (knownAtOnce) s.banditCampsFound += 1;
+      const text = CAMP_FOUNDING_LINE[Math.floor(Math.random() * CAMP_FOUNDING_LINE.length)];
+      const knownNote = knownAtOnce ? CAMP_ALREADY_CHARTED_NOTE : "";
+      return { year: s.year, text: `${text}${knownNote}`, tone: "bad" };
     },
   },
   {
@@ -309,6 +307,9 @@ function adjustedWeight(ev: EventDef, state: GameState): number {
     return ev.weight * mult;
   }
   if (ev.id === "bandits") {
+    // A camp already stands — it raids from the turn pipeline. Rolling another
+    // band on top of it would just overwrite the one the player is fighting.
+    if (state.banditCamp) return 0;
     let mult = 1;
     if (state.morale <= MORALE_PREY_THRESHOLD) mult++;
     if (isPursued(state) && state.year <= BANDIT_PURSUIT_YEARS) mult++;

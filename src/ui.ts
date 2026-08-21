@@ -23,6 +23,7 @@ import {
   declineRefugees,
   dispatchBoat,
   effectiveCrewLossChance,
+  executeSortie,
   executeTradeBasket,
   fishingLossReduction,
   houseBlockerReason,
@@ -31,9 +32,12 @@ import {
   respectElders,
   setChildrenFree,
   setChildrenWorking,
+  sortieBlockerReason,
+  sortieOdds,
   toggleChildPolicy,
   toggleWorkLevy,
   lawChangeDelta,
+  militiaDefence,
   toggleElderPolicy,
   townUpgradeBlockerReason,
   unassignWorker,
@@ -64,6 +68,8 @@ import {
   HOUSE_CAPACITY,
   HOUSE_FOOD_YIELD,
   Job,
+  TileJob,
+  isTilelessJob,
   JOBS,
   JOB_LABEL,
   LANDING_SPOTS,
@@ -1209,6 +1215,9 @@ function renderAllocation(state: GameState, onChange: () => void): void {
   const container = document.getElementById("job-controls")!;
   container.innerHTML = "";
   for (const job of JOBS) {
+    // No Muster Field, no militia row — the job doesn't exist yet, and an
+    // always-disabled row would read as a bug rather than as a locked feature.
+    if (job === "militia" && !state.buildings.muster_field) continue;
     container.appendChild(jobRow(state, job, onChange));
   }
 }
@@ -1218,8 +1227,11 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
   row.className = "job-row";
   row.title = JOB_TOOLTIPS[job] ?? "";
 
+  // null for scouts and militia — they hold no tile, so every tile-facing
+  // lookup below is keyed off this rather than off the job name.
+  const tileJob: TileJob | null = isTilelessJob(job) ? null : job;
   const count = jobCount(state, job);
-  const cap = job === "scout" ? fertileCount(state) : totalReachableCapacity(state, job);
+  const cap = tileJob === null ? fertileCount(state) : totalReachableCapacity(state, tileJob);
   const name = document.createElement("span");
   name.className = "name";
   name.textContent = `${JOB_LABEL[job]} ${count}/${cap}`;
@@ -1230,9 +1242,11 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
   minus.addEventListener("click", () => {
     if (job === "scout") {
       if (state.scouts > 0) state.scouts -= 1;
-    } else {
-      const slot = findWorkerToRemove(state, job);
-      if (slot) unassignWorker(state, slot.x, slot.y, job);
+    } else if (job === "militia") {
+      if (state.militia > 0) state.militia -= 1;
+    } else if (tileJob) {
+      const slot = findWorkerToRemove(state, tileJob);
+      if (slot) unassignWorker(state, slot.x, slot.y, tileJob);
     }
     onChange();
   });
@@ -1244,27 +1258,33 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
   const plus = document.createElement("button");
   plus.textContent = "+";
   const frontierExists = hasUndiscoveredFrontier(state.tiles);
-  const canAddScout = job === "scout" && idleCount(state) > 0 && frontierExists;
+  const idle = idleCount(state) > 0;
+  const canAddScout = job === "scout" && idle && frontierExists;
+  const canAddMilitia = job === "militia" && idle;
   let canAddProd = false;
-  if (job !== "scout") {
-    canAddProd = idleCount(state) > 0 && findEligibleTile(state, job) !== null;
+  if (tileJob) {
+    canAddProd = idle && findEligibleTile(state, tileJob) !== null;
   }
-  plus.disabled = state.gameOver || !(canAddScout || canAddProd);
+  plus.disabled = state.gameOver || !(canAddScout || canAddMilitia || canAddProd);
   if (job === "scout" && !frontierExists) {
     plus.title = "The island is fully charted — no more land to explore.";
-  } else if (job !== "scout" && idleCount(state) > 0 && !canAddProd) {
-    const terrainLabel: Record<Exclude<Job, "scout">, string> = {
+  } else if (job === "militia" && !idle) {
+    plus.title = "No idle hands to take up a spear.";
+  } else if (tileJob && idle && !canAddProd) {
+    const terrainLabel: Record<TileJob, string> = {
       farmer: "grassland", woodcutter: "forest", hunter: "forest",
       quarryman: "stone", fisher: "shallows",
     };
-    plus.title = `No ${terrainLabel[job]} in reach — send scouts`;
+    plus.title = `No ${terrainLabel[tileJob]} in reach — send scouts`;
   }
   plus.addEventListener("click", () => {
     if (job === "scout") {
       if (idleCount(state) > 0) state.scouts += 1;
-    } else {
-      const slot = findEligibleTile(state, job);
-      if (slot) assignWorker(state, slot.x, slot.y, job);
+    } else if (job === "militia") {
+      if (idleCount(state) > 0) state.militia += 1;
+    } else if (tileJob) {
+      const slot = findEligibleTile(state, tileJob);
+      if (slot) assignWorker(state, slot.x, slot.y, tileJob);
     }
     onChange();
   });
@@ -1751,6 +1771,23 @@ function renderTileInfo(state: GameState, onChange: () => void): void {
   const t = state.tiles[y][x];
   panel.innerHTML = describeTile(state, t, x, y);
 
+  // The sortie sits outside the build-button block below: a camp can stand on
+  // ground you'd never build a road across, and marching on it has nothing to
+  // do with reach.
+  const camp = state.banditCamp;
+  if (camp && camp.known && camp.x === x && camp.y === y) {
+    const raidBtn = document.createElement("button");
+    raidBtn.textContent = `Raid the Camp (${state.militia} militia)`;
+    const blocker = sortieBlockerReason(state);
+    raidBtn.disabled = blocker !== null;
+    raidBtn.title = blocker ?? `Odds of driving them out: ${Math.round(sortieOdds(state) * 100)}%. Losing costs lives.`;
+    raidBtn.addEventListener("click", () => {
+      executeSortie(state);
+      onChange();
+    });
+    panel.appendChild(raidBtn);
+  }
+
   if (t.discovered && t.terrain !== "water" && t.terrain !== "mountain") {
     const inReach = isInReach(state, x, y);
 
@@ -1813,6 +1850,10 @@ function describeTile(state: GameState, t: Tile, x: number, y: number): string {
     lines.push(`<div>Workers: ${t.workers}/${t.capacity}${detail}</div>`);
   } else if (t.capacity > 0) {
     lines.push(`<div>Workers: ${t.workers}/${t.capacity}</div>`);
+  }
+  const camp = state.banditCamp;
+  if (camp && camp.known && camp.x === x && camp.y === y) {
+    lines.push(`<div class="danger">Bandit camp — strength ${camp.strength}. Your defence: ${militiaDefence(state)} (${state.militia} militia).</div>`);
   }
   const tileYield = describeTileYield(state, t);
   if (tileYield) lines.push(`<div class="tile-yield">${tileYield}</div>`);

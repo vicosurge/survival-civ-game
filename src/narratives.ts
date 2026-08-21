@@ -51,6 +51,8 @@ import type { BuildingId } from "./types";
 export const BUILDING_UNLOCK_TEXT: Partial<Record<BuildingId, string>> = {
   long_house:
     "Twenty-five souls now shelter on Cambrera. Voices around the fire speak of a Long House — a roof tall enough to gather under, a place to decide together.",
+  muster_field:
+    "Word of the camp travels the settlement by nightfall. Someone remembers how the old levies drilled, and says it aloud: we could raise a muster field, and stop being only the people this happens to.",
   dock:
     "With the Long House standing, talk turns to the shore: pilings driven into the surf, a plank pier, a breakwater of dressed stone. A real dock would change how the coastal traders treat us.",
 };
@@ -103,6 +105,60 @@ export const LEVY_UNFED_LINE =
 export const levyWorkLine = (food: number, wood: number, stone: number): string =>
   `The work gangs are fed from the stores — ${food} food for ${wood} wood and ${stone} stone.`;
 
+// ─── Bandits, raids, and the sortie (v0.10) ───────────────────────────────────
+// The camp arc carries more prose than any other mechanic, so all of it lives
+// here rather than in turn.ts. Keep them human and desperate — per the lore
+// memory, bandits are displaced Exarum survivors, never draconians.
+
+export const CAMP_FOUNDING_LINE = [
+  "Smoke rises from somewhere inland that should have no fire under it. Others came out of the war and did not choose the plough.",
+  "A fisher comes back white-faced: a camp, out past the charted ground. Exarum faces, Exarum tongue, and spears cut from your own island's wood.",
+  "They are your own kind — survivors of the same crossing — and they have made a camp out where nobody is watching. That is all anyone knows yet.",
+];
+export const CAMP_NOWHERE_TO_HIDE_LINE =
+  "Strangers are sighted along the shoreline at dusk, and are gone by morning. There is nowhere on this island they could not be watched.";
+export const CAMP_ALREADY_CHARTED_NOTE =
+  " Their camp stands on ground you have already charted.";
+
+export const CAMP_FOUND_BY_SCOUTS_LINE =
+  "Scouts crest a rise and go flat against the heather. Cook fires, lean-tos, a picket. The camp is on the map now.";
+export const CAMP_FOUND_BY_RAID_LINE =
+  "This time the villagers follow them back. The camp is on the map now — everyone knows where they sleep.";
+
+export const RAID_INTRO = [
+  "A band of Exarum stragglers — washed up on a different beach, lean and angry — come down on the storehouses.",
+  "Other survivors of the war, who landed elsewhere on Cambrera and turned to taking what they need, slip in at dusk.",
+  "Refugees from the war who chose the road of the knife over the road of the plough come for your stores.",
+];
+export const RAID_AVERTED_LINE =
+  "Raiders test the palisade in the night and withdraw empty-handed. The wall holds. (Averted)";
+export const RAID_HELD_NOTE =
+  " Your militia bloody them on the way out, but there are not enough spears.";
+export const RAID_OVER_WALL_NOTE =
+  " They are over the palisade before anyone reaches the gate.";
+export const raidRepelledLine = (intro: string): string =>
+  `${intro} Your militia meet them at the treeline and turn them back with nothing.`;
+export const raidEmptyLine = (intro: string, wallNote: string, morale: number): string =>
+  `${intro}${wallNote} They find the storehouses empty and leave with nothing — but the village sleeps poorly. (${morale} morale)`;
+export const raidTheftLine = (intro: string, wallNote: string, heldNote: string, stolen: number, morale: number): string =>
+  `${intro}${wallNote}${heldNote} They make off with stores before dawn. (-${stolen} food, ${morale} morale)`;
+
+// Violent deaths keep their own line and their own tone — never folded into the
+// year's population tally.
+export const raidDeathsLine = (deaths: number, founderNote: string): string =>
+  `This band no longer only takes food. ${deaths === 1 ? "One villager is" : `${deaths} villagers are`} killed in the yard defending the stores.${founderNote}`;
+
+export const sortieWonLine = (loot: number, morale: number): string =>
+  `Your militia march out at first light and burn the camp. What was taken from you over the years comes back on your own backs. (+${loot} food, +${morale} morale)`;
+export const sortieLostLine = (deaths: number, founderNote: string, morale: number): string =>
+  `The sortie goes badly. The camp was ready for you, and ${deaths === 1 ? "one does" : `${deaths} do`} not come home — though the raiders are bloodied too.${founderNote} (${morale} morale)`;
+
+// Shared by the famine, raid, and sortie death lines.
+export const founderLossNote = (founders: number): string =>
+  founders > 0
+    ? ` ${founders === 1 ? "One was" : `${founders} were`} of the original founding band.`
+    : "";
+
 // Tooltip copy on each row of the villager allocator (#20). Players new to the
 // game don't know what each job does, what tile it claims, or why a + button is
 // grayed out. One sentence each — terse, mechanical, but voice-consistent. The
@@ -121,4 +177,6 @@ export const JOB_TOOLTIPS: Record<string, string> = {
     "Works stone tiles. +1 stone/year per worker. The seam holds a finite amount of stone; eventually the quarry runs dry.",
   scout:
     "Reveals new tiles at the frontier. Doesn't occupy a tile. Auto-retires once the island is fully charted.",
+  militia:
+    "Spears kept by the door. Doesn't occupy a tile and produces nothing — but militia blunt bandit raids, turn one back entirely when they outnumber the camp's strength, and are who you send if you march on the camp itself.",
 };

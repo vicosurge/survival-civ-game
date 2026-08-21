@@ -43,6 +43,10 @@ const TRIGGERS: { id: CutsceneId; when: (state: GameState) => boolean }[] = [
   { id: "siege_of_destum", when: (s) => s.scriptedWaves.some((w) => w.id === "wave1" && w.fired) },
   { id: "long_house_built", when: (s) => s.buildings.long_house },
   { id: "shrine_of_anata_built", when: (s) => s.buildings.shrine_of_anata },
+  { id: "bandit_camp_found", when: (s) => s.banditCampsFound > 0 },
+  // The camp is gone by the time this fires, so it triggers off the lifetime
+  // counter rather than off any surviving camp state.
+  { id: "first_sortie", when: (s) => s.sortiesWon > 0 },
 ];
 
 export function hasSeenCutscene(state: GameState, id: CutsceneId): boolean {
