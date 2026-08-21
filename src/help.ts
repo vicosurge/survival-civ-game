@@ -14,6 +14,15 @@ export interface HelpSection {
 
 export const HELP_SECTIONS: HelpSection[] = [
   {
+    title: "Getting Started",
+    body: `
+      <p>Two things carry a new settlement: <strong>keep everyone fed</strong>, and <strong>get to twenty-five people</strong> so you can raise the Long House. Everything civic on this island unlocks from that roof.</p>
+      <p>A short note appears above the Villagers panel naming the one thing worth doing right now. It stands down on its own once the Long House is up, and the <strong>&times;</strong> in its corner dismisses it for good — for this game and every game after.</p>
+      <p><strong>Where did the other buildings go?</strong> The Buildings panel leads with what's worth building today. Anything you're still saving up for — or that would do nothing yet, like a Lumber Camp with no woodcutters — is one click away under <em>"…more, once you can afford them"</em>, with its shortfall shown so you know the target.</p>
+      <p>Jobs work the same way: a job only appears once there's land in reach for it. No stone within two fields of the hearth means no Quarryman row yet — send a scout, or lay a dirt path (3 timber) to carry your reach one field further.</p>
+    `,
+  },
+  {
     title: "Settlers & Aging",
     body: `
       <p>Each settler is a <em>pop</em> — an abstract cohort, not a literal person. Pops age through three phases:</p>

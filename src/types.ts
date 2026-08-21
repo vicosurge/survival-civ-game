@@ -1,4 +1,4 @@
-export const VERSION = "v0.10";
+export const VERSION = "v0.10.1";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
@@ -800,6 +800,21 @@ export const CHICKEN_SLAUGHTER_FOOD = 1;    // food per surplus chicken culled
 
 // One-time-purchase settlement upgrades. Each blocks a specific negative event
 // (see events.ts: blockedBy + blockedText). No durability; no multiples.
+// Buildings whose whole benefit is a per-worker multiplier: with nobody in that
+// job they do literally nothing. The Hunting Lodge tooltip already says this in
+// prose ("Your hunters already work the forest without it", #8) — this is the
+// same fact in a form the UI can act on, used to keep turn-1 build rows down to
+// what is actually worth buying today.
+//
+// The Granary is deliberately absent: its farmer bonus is conditional but its
+// +80 food storage is not, and storage is its real job (see the food-storage
+// section in CLAUDE.md).
+export const BUILDING_NEEDS_JOB: Partial<Record<BuildingId, Job>> = {
+  hunting_lodge: "hunter",
+  lumber_camp: "woodcutter",
+  mason_workshop: "quarryman",
+};
+
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   granary: {
     id: "granary",

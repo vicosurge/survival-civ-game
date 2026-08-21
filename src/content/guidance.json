@@ -1,0 +1,23 @@
+{
+  "_note": "Early-game guidance. Settlement voice, plain — these must be scannable in two seconds, so they are deliberately shorter and blunter than the chronicle or the cutscenes. Each has a title of a few words and one or two sentences. Prose only; src/guidance.ts owns when each is shown.",
+
+  "first_year": {
+    "title": "Food, first of all",
+    "body": "Nothing else matters until the year's eating is covered. One pair of hands is standing idle — put them to a job, then end the year and see what the harvest brings."
+  },
+
+  "first_building": {
+    "title": "Something to build with",
+    "body": "Timber and stone are what everything after this is made of, and no one is cutting either. A Communal Garden is already within your means, and it feeds the settlement every year without asking for a worker."
+  },
+
+  "find_stone": {
+    "title": "Stone is out there somewhere",
+    "body": "Your people will not walk more than two fields from the hearth, and there is no stone inside that ring. Send a scout to find some. When you do, a dirt path costs three timber and carries your reach one field further — you do not need the Long House to go and get it."
+  },
+
+  "toward_long_house": {
+    "title": "Twenty-five souls",
+    "body": "The Long House needs a real community under it — twenty-five people. Keep them fed, keep spirits up, and take in the survivors who come. Everything civic on this island unlocks from that roof."
+  }
+}
