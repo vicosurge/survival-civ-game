@@ -453,6 +453,25 @@ Milestone narrative interludes — Infocom-style "feelies." Three or four paragr
 
 **Out of scope for v1** (don't drift into these without asking): branching or choice-bearing cutscenes, voiceover/animation, per-departure-choice `founding` variants, localization.
 
+### Onboarding: guidance + progressive disclosure (v0.10.1)
+
+Answers the May 2026 tester's oldest complaint, verbatim in `ideas.txt`: *"the game throws way too many options at you out the gate… **On a second run I didnt have the problem.** I dont really know what it lacks."* That is a **priority** problem, not a comprehension one — the help modal and job tooltips already say what a fisher does. **Don't turn this into a tutorial.** (The complaint's other half, "hard stuck because you need long house into road to get to stone", was already fixed by ungated dirt paths.)
+
+Two halves, sharing no code.
+
+**1. Guidance** — `src/guidance.ts` owns *when*, `src/content/guidance.json` owns *what*, ui.ts owns how it looks. Same three-way split as cutscenes. A `TRIGGERS`-shaped table of `{ id, done, from, until }`; the hint is the first row that is neither done nor past its window.
+
+- **Every `done` predicate must be monotonic.** Guidance holds **no state on `GameState`** — it is derived on each render — which is why this milestone shipped with **no `SAVE_KEY` bump**. The price is that a reversible predicate resurrects a year-1 hint in year 40: `idleCount === 0` reverses on a death, `pops.length >= 25` reverses in a famine. Year, tile discovery and built-flags never reverse.
+- **The year windows are not decoration.** Without them an uncompleted early step blocks every later one forever — a player who never built anything sat on "build something" for the whole game and was never shown the stone hint, on exactly the two landings where stone isn't visible at turn 1. Windows must also leave **no gap**, or a player who's done everything gets a silent stretch and then a hint from nowhere.
+- **`guidanceProgress` is not "which step is on screen."** It ignores windows and reads the `done` predicates alone. Conflating the two made it report 4 in year 2 and 3 in year 4 — a false monotonicity failure. The harness asserts on progress.
+- Dismissal is `localStorage["isle-of-cambrera-skip-guidance"]`, same shape as `skipCutscenes()`. Retires at the Long House regardless.
+
+**2. Disclosure** — build rows split into what's worth building now and a collapsed `<details>`:
+- Set aside if the blocker starts with `"Short:"`, **or** if `BUILDING_NEEDS_JOB[id]` names a job with zero workers (a Lumber Camp with no woodcutters does nothing — the same fact the Hunting Lodge tooltip states in prose, #8). **Affordability alone is a weak filter** — a generous departure affords seven things on turn 1, which *is* the complaint. Measured: with affordability only, 10 rows → 8; with relevance too, 10 → 6 regardless of departure.
+- **Collapsed, never hidden.** Resource blockers stay visible by contract ("players need the savings target") — `<details>` honours that, one click away. Gate blockers keep being hidden outright by `isBuildingHidden`. `long_house` stays in the main list always.
+- Job rows: hidden when `totalReachableCapacity === 0`, **unless `jobCount > 0`** — a job must never vanish with workers in it (a forest exhausting its game closes the hunter slot while hunters stand on it).
+- **The ship panel is deliberately untouched.** "Ship gone — burned at anchor" and "Lost at sea" are authored consequences of a departure choice and a failed voyage. A dead panel that says something is not clutter.
+
 ### Chronicle (log)
 
 - Newest on top (unshift).
@@ -510,8 +529,9 @@ src/ui.ts           DOM overlays. renderUI, intro, wizard, trade, governance, he
 src/help.ts         HELP_SECTIONS. **Update with mechanic changes** — out-of-date help is worse than none.
 src/narratives.ts   Chronicle prose (unlock, town upgrade, civic flip, job tooltips). Keep prose out of turn.ts.
 src/cutscenes.ts    Cutscene trigger table + seen/archive helpers. Owns *when*, never *what*.
+src/guidance.ts     Early-game hint table. Monotonic predicates + year windows; no save state.
 sim/                Python balance sims. bandit_pressure.py backs the v0.10 combat numbers.
-src/content/        Player-facing prose as JSON. cutscenes.json today; #32 would move the rest here.
+src/content/        Player-facing prose as JSON. cutscenes.json + guidance.json; #32 would move the rest here.
 src/style.css       Retro palette: muted browns, gold accents, monospace.
 public/music/       Music served at /music/* (not bundled). gemini_iron_under_snow.mp3.
 ```

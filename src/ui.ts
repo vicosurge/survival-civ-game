@@ -1,5 +1,6 @@
 import { CUTSCENES, CUTSCENE_IMAGE_DIR, checkCutsceneTriggers, cutsceneArchive, markCutsceneSeen } from "./cutscenes";
 import type { CutsceneDef } from "./cutscenes";
+import { currentGuidanceStep, dismissGuidance } from "./guidance";
 import { HELP_SECTIONS } from "./help";
 import { findEligibleTile, findWorkerToRemove, hasUndiscoveredFrontier, isInReach, totalReachableCapacity } from "./map";
 import { JOB_TOOLTIPS } from "./narratives";
@@ -18,6 +19,7 @@ import {
   canBuildRoad,
   canDispatchBoat,
   canExecuteTradeBasket,
+  currentJobCount,
   declineAnataSacrifice,
   declineTrade,
   declineRefugees,
@@ -51,6 +53,7 @@ import {
   ANATA_SACRIFICE_MORALE_GAIN,
   AUTHOR,
   BOAT_CREW_SIZE,
+  BUILDING_NEEDS_JOB,
   BUILDINGS,
   BuildingDef,
   BuildingId,
@@ -759,6 +762,7 @@ export function attachCanvasClick(
 export function renderUI(state: GameState, onAllocChange: () => void): void {
   _stateRef = state;
   renderTopbar(state);
+  renderGuidance(state, onAllocChange);
   renderAllocation(state, onAllocChange);
   renderLivestock(state, onAllocChange);
   renderBuildingsPanel(state, onAllocChange);
@@ -1215,11 +1219,27 @@ function renderAllocation(state: GameState, onChange: () => void): void {
   const container = document.getElementById("job-controls")!;
   container.innerHTML = "";
   for (const job of JOBS) {
-    // No Muster Field, no militia row — the job doesn't exist yet, and an
-    // always-disabled row would read as a bug rather than as a locked feature.
-    if (job === "militia" && !state.buildings.muster_field) continue;
+    if (!isJobVisible(state, job)) continue;
     container.appendChild(jobRow(state, job, onChange));
   }
+}
+
+// A job the settlement cannot currently do at all is not shown. The turn-1
+// screen was the loudest half of the "too many options out the gate" complaint,
+// and Quarryman with a hard 0/0 is the clearest example: the map generator
+// guarantees grass, forest and water within reach, never stone.
+//
+// The `jobCount > 0` clause is load-bearing — a job must never disappear while
+// someone is still doing it, or those workers become unassignable. That can
+// happen for real: a forest exhausting its game closes the hunter slot while
+// hunters are still standing on it.
+function isJobVisible(state: GameState, job: Job): boolean {
+  if (jobCount(state, job) > 0) return true;
+  // No Muster Field, no militia row — the job doesn't exist yet, and an
+  // always-disabled row would read as a bug rather than as a locked feature.
+  if (job === "militia") return state.buildings.muster_field;
+  if (job === "scout") return hasUndiscoveredFrontier(state.tiles);
+  return totalReachableCapacity(state, job) > 0;
 }
 
 function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
@@ -1293,25 +1313,102 @@ function jobRow(state: GameState, job: Job, onChange: () => void): HTMLElement {
   return row;
 }
 
+// A row the player can't afford *yet* goes into the collapsed "later" group
+// rather than into the main list. It is never hidden: CLAUDE.md makes visible
+// resource blockers a contract, because "Short: 25 stone" IS the savings
+// target. One click still shows it — but a first-time player on turn 1 sees
+// six rows instead of ten.
+function isSavingUpFor(blocker: string | null): boolean {
+  return blocker !== null && blocker.startsWith("Short:");
+}
+
+// A pure multiplier building with nobody in the job it multiplies buys the
+// player nothing this year. Affordability alone turned out to be a weak filter:
+// a generous departure can afford seven different things on turn 1, which is
+// precisely the "too many options out the gate" the milestone exists to answer.
+function isNotYetUseful(state: GameState, id: BuildingId): boolean {
+  const job = BUILDING_NEEDS_JOB[id];
+  return job !== undefined && currentJobCount(state, job) === 0;
+}
+
+// The "direction" half of onboarding. Renders the current step, or hides the
+// section entirely when guidance has retired or been dismissed. Stateless —
+// currentGuidanceStep derives everything from GameState, so this costs no save
+// field and nothing here needs clearing between games.
+function renderGuidance(state: GameState, onChange: () => void): void {
+  const section = document.getElementById("guidance")!;
+  const step = currentGuidanceStep(state);
+  if (!step) {
+    section.classList.add("hidden");
+    return;
+  }
+  section.classList.remove("hidden");
+  document.getElementById("guidance-title")!.textContent = step.title;
+  document.getElementById("guidance-body")!.textContent = step.body;
+
+  const dismiss = document.getElementById("guidance-dismiss") as HTMLButtonElement;
+  if (!dismiss.dataset.wired) {
+    dismiss.dataset.wired = "1";
+    dismiss.addEventListener("click", () => {
+      dismissGuidance();
+      onChange();
+    });
+  }
+}
+
 function renderBuildingsPanel(state: GameState, onChange: () => void): void {
   const panel = document.getElementById("buildings-panel")!;
   panel.innerHTML = "";
+
+  const later = document.createElement("div");
+  let laterCount = 0;
 
   // Town-centre upgrades render first — they're stabilising infrastructure,
   // available from turn 1, and visually separated from the one-time buildings
   // by the dashed border on the last upgrade row.
   for (const id of Object.keys(TOWN_UPGRADES) as TownUpgradeId[]) {
-    panel.appendChild(townUpgradeRow(state, TOWN_UPGRADES[id], onChange));
+    const def = TOWN_UPGRADES[id];
+    const row = townUpgradeRow(state, def, onChange);
+    if (!state.townUpgrades[id] && isSavingUpFor(townUpgradeBlockerReason(state, id))) {
+      later.appendChild(row);
+      laterCount += 1;
+    } else {
+      panel.appendChild(row);
+    }
   }
 
   // One-time buildings — gate-blocked ones are hidden until their gate is met
-  // (long_house excepted: it's the major civic milestone and stays visible).
+  // (long_house excepted: it's the major civic milestone and stays visible,
+  // including while you're still saving for it).
   const ids = Object.keys(BUILDINGS) as BuildingId[];
   for (const id of ids) {
     if (isBuildingHidden(state, id)) continue;
-    panel.appendChild(buildingRow(state, BUILDINGS[id], onChange));
+    const row = buildingRow(state, BUILDINGS[id], onChange);
+    const setAside = isSavingUpFor(buildBlockerReason(state, id)) || isNotYetUseful(state, id);
+    if (id !== "long_house" && !state.buildings[id] && setAside) {
+      later.appendChild(row);
+      laterCount += 1;
+    } else {
+      panel.appendChild(row);
+    }
   }
-  panel.appendChild(houseRow(state, onChange));
+
+  const houseBlocker = houseBlockerReason(state);
+  if (isSavingUpFor(houseBlocker)) {
+    later.appendChild(houseRow(state, onChange));
+    laterCount += 1;
+  } else {
+    panel.appendChild(houseRow(state, onChange));
+  }
+
+  if (laterCount > 0) {
+    const details = document.createElement("details");
+    details.className = "buildings-later";
+    const summary = document.createElement("summary");
+    summary.textContent = `${laterCount} more, once you can afford ${laterCount === 1 ? "it" : "them"}`;
+    details.append(summary, later);
+    panel.appendChild(details);
+  }
 
   // Governance opener — surfaces only once the Long House civic anchor is up.
   if (state.buildings.long_house) {
