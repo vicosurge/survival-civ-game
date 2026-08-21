@@ -23,6 +23,7 @@ import {
   INITIAL_HUT_CAPACITY,
   HOUSE_CAPACITY,
   Job,
+  TileJob,
   LANDING_SPOTS,
   LIFESPAN_RANGE,
   LUMBER_CAMP_WOODCUTTER_BONUS,
@@ -130,6 +131,11 @@ export function newGame(departure: DepartureChoices): GameState {
     tiles,
     town,
     scouts: 1,
+    militia: 0,
+    banditCamp: null,
+    sortieUsedThisYear: false,
+    banditCampsFound: 0,
+    sortiesWon: 0,
     boat: boatScrapped
       ? { status: "scrapped", returnYear: null, crew: [] }
       : { status: "docked", returnYear: null, crew: [] },
@@ -151,8 +157,8 @@ export function newGame(departure: DepartureChoices): GameState {
     workLevy: false,
     spoilageNotified: false,
     pendingChildDecision: false,
-    buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, lumber_camp: false, mason_workshop: false, long_house: false, shrine_of_anata: false, chicken_coop: false, dock: false },
-    unlockedBuildings: { granary: true, palisade: true, well: true, hunting_lodge: true, lumber_camp: true, mason_workshop: true, long_house: false, shrine_of_anata: false, chicken_coop: true, dock: false },
+    buildings: { granary: false, palisade: false, well: false, hunting_lodge: false, lumber_camp: false, mason_workshop: false, long_house: false, shrine_of_anata: false, chicken_coop: false, dock: false, muster_field: false },
+    unlockedBuildings: { granary: true, palisade: true, well: true, hunting_lodge: true, lumber_camp: true, mason_workshop: true, long_house: false, shrine_of_anata: false, chicken_coop: true, dock: false, muster_field: false },
     townUpgrades: { communal_garden: false, workshop_yard: false },
     houses: 0,
     chickens: 0,
@@ -182,7 +188,7 @@ export function newGame(departure: DepartureChoices): GameState {
   return state;
 }
 
-function placeStarterWorker(state: GameState, job: Exclude<import("./types").Job, "scout">): void {
+function placeStarterWorker(state: GameState, job: TileJob): void {
   const slot = findEligibleTile(state, job);
   if (!slot) return;
   const tile = state.tiles[slot.y][slot.x];
@@ -257,7 +263,8 @@ export function assignedTotal(state: GameState): number {
     currentWorkers(state, "quarryman") +
     currentWorkers(state, "hunter") +
     currentWorkers(state, "fisher") +
-    state.scouts
+    state.scouts +
+    state.militia
   );
 }
 
@@ -293,6 +300,7 @@ export function spoilageFor(state: GameState, food: number): number {
 
 export function jobCount(state: GameState, job: Job): number {
   if (job === "scout") return state.scouts;
+  if (job === "militia") return state.militia;
   return currentWorkers(state, job);
 }
 

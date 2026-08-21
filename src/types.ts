@@ -1,11 +1,21 @@
-export const VERSION = "v0.9.1";
+export const VERSION = "v0.10";
 export const AUTHOR = "Vicente Muñoz";
 
 export type Terrain = "water" | "beach" | "river" | "grass" | "forest" | "stone" | "mountain";
 
-export type Job = "farmer" | "woodcutter" | "quarryman" | "hunter" | "fisher" | "scout";
+export type Job = "farmer" | "woodcutter" | "quarryman" | "hunter" | "fisher" | "scout" | "militia";
 
-export const JOBS: Job[] = ["farmer", "hunter", "fisher", "woodcutter", "quarryman", "scout"];
+// Scouts and militia hold no tile — they're counts on GameState, drawn from the
+// same idle-fertile pool as everyone else. Every tile-facing helper takes TileJob
+// so adding a tileless role can't silently slip into terrain lookups.
+export type TilelessJob = "scout" | "militia";
+export type TileJob = Exclude<Job, TilelessJob>;
+
+export function isTilelessJob(job: Job): job is TilelessJob {
+  return job === "scout" || job === "militia";
+}
+
+export const JOBS: Job[] = ["farmer", "hunter", "fisher", "woodcutter", "quarryman", "scout", "militia"];
 
 export const JOB_LABEL: Record<Job, string> = {
   farmer: "Farmer",
@@ -14,6 +24,7 @@ export const JOB_LABEL: Record<Job, string> = {
   hunter: "Hunter",
   fisher: "Fisher",
   scout: "Scout",
+  militia: "Militia",
 };
 
 // What the tile is today. `wild` = untouched terrain. `cultivating` = a worker has
@@ -26,7 +37,7 @@ export type TileState = "wild" | "cultivating" | "worked" | "fallow" | "exhauste
 // Maps production jobs to the terrains they work. Scouts don't occupy tiles.
 // Most jobs have a single terrain; fishers work both beach and river.
 // Woodcutter and hunter both work forest and can coexist on the same tile.
-export const JOB_TERRAINS: Record<Exclude<Job, "scout">, Terrain[]> = {
+export const JOB_TERRAINS: Record<TileJob, Terrain[]> = {
   farmer: ["grass"],
   woodcutter: ["forest"],
   quarryman: ["stone"],
@@ -88,7 +99,7 @@ export interface ScriptedWave {
 // Milestone narrative interludes. Content lives in src/content/cutscenes.json;
 // trigger conditions live in src/cutscenes.ts. Adding one is three edits: JSON
 // entry, id here, trigger row — no changes to the turn pipeline.
-export type CutsceneId = "founding" | "siege_of_destum" | "long_house_built" | "shrine_of_anata_built";
+export type CutsceneId = "founding" | "siege_of_destum" | "long_house_built" | "shrine_of_anata_built" | "bandit_camp_found" | "first_sortie";
 
 // The year is stored, not derived, because the archive lists cutscenes by when
 // they happened to *this* settlement — the Long House lands in a different year
@@ -101,7 +112,7 @@ export interface SeenCutscene {
 export type TradeAction = "sell" | "buy";
 export type TradeResource = "food" | "wood" | "stone";
 
-export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "lumber_camp" | "mason_workshop" | "long_house" | "shrine_of_anata" | "chicken_coop" | "dock";
+export type BuildingId = "granary" | "palisade" | "well" | "hunting_lodge" | "lumber_camp" | "mason_workshop" | "long_house" | "shrine_of_anata" | "chicken_coop" | "dock" | "muster_field";
 
 // Town-centre upgrades — repeatable infrastructure layer that lives outside the
 // one-time BUILDINGS table. The Communal Garden + Workshop Yard are tier-1
@@ -388,6 +399,19 @@ export interface DepartureChoices {
 // Years after game start that the "pursued by bandits" flag raises bandit event weight.
 export const BANDIT_PURSUIT_YEARS = 5;
 
+// A persistent adversary with continuity across turns. `known` gates everything
+// the player can do about it (and everything the camp can do to them at its
+// worst): it flips when the camp's tile is discovered, or after
+// BANDIT_KNOWN_AFTER_RAIDS raids when survivors track the raiders home.
+export interface BanditCamp {
+  x: number;
+  y: number;
+  strength: number;
+  known: boolean;
+  raidsSuffered: number;
+  yearFounded: number;   // a camp never raids the year it appears
+}
+
 export interface GameState {
   year: number;
   pops: Pop[];
@@ -399,6 +423,11 @@ export interface GameState {
   tiles: Tile[][];
   town: { x: number; y: number };
   scouts: number;
+  militia: number;                 // tileless, like scouts — defence and the sortie force
+  banditCamp: BanditCamp | null;   // at most one at a time
+  sortieUsedThisYear: boolean;     // one sortie per year; stops same-year grind-down
+  banditCampsFound: number;        // lifetime; `banditCamp` is transient, cutscene triggers are not
+  sortiesWon: number;              // lifetime; the camp is gone by the time the cutscene fires
   boat: Boat;
   scriptedWaves: ScriptedWave[];
   merchantVisit: MerchantVisit | null;  // pending merchant visit; blocks end-year
@@ -458,7 +487,7 @@ export const FOOD_PER_CHILD = 1;
 // Per-worker yields when the tile is in `worked` state. Flat rates; tile capacity
 // limits *how many workers fit*, not the rate per worker. Fisher is the average
 // of the rolled range — actual per-year yield is randomised (see FISHER_YIELD_*).
-export const YIELD_PER_WORKER: Record<Exclude<Job, "scout">, number> = {
+export const YIELD_PER_WORKER: Record<TileJob, number> = {
   farmer: 2,
   woodcutter: 2,
   quarryman: 1,
@@ -689,12 +718,66 @@ export const MORALE_REFUGEE_REJECT = -3;    // morale on turning refugees away
 
 // ─── Bandits (Exarum stragglers) ──────────────────────────────────────────────
 // Reflavored from "highland raiders" to desperate refugees from the Exarum war
-// who turned to theft rather than join the settlement. They steal food, not
-// lives — a smaller, recoverable shock that erodes surplus rather than the
-// settlement itself. Palisade still blocks the event entirely.
-export const BANDIT_THEFT_RANGE: [number, number] = [5, 15];   // food stolen, rolled per raid (capped at current stores)
+// who turned to theft rather than join the settlement.
+//
+// v0.10: bandits are no longer a one-shot event. The `bandits` roll now *founds*
+// a camp somewhere on the island; the camp persists, grows a point of strength
+// every year, and raids from the turn pipeline (step 4.5) until the player
+// destroys it. See BanditCamp below.
+// A raid takes `(camp strength − militia) × BANDIT_THEFT_PER_STRENGTH` food,
+// plus this jitter, so no two raids of the same size land identically.
+export const BANDIT_THEFT_JITTER: [number, number] = [0, 10];
 export const MORALE_BANDIT_THEFT = -3;          // morale cost when food is taken
 export const MORALE_BANDIT_EMPTY = -2;          // morale cost when stores were already empty (still demoralising)
+
+// ─── Bandit camps + militia (v0.10 combat loop) ───────────────────────────────
+// The camp is both the map presence and the pressure counter: `strength` drives
+// theft, raid odds, and the sortie contest, while x,y makes it something the
+// player can march on. One camp at a time — a destroyed camp can be re-seeded
+// later by the event, starting over at strength 1.
+export const BANDIT_CAMP_MIN_DISTANCE = 5;      // Chebyshev from town — the camp is never a neighbour
+export const BANDIT_CAMP_GROWTH = 1;            // strength gained per year unopposed
+export const BANDIT_CAMP_MAX_STRENGTH = 6;
+export const BANDIT_RAID_CHANCE_BASE = 0.35;    // a camp doesn't raid every year — the quiet years are the dread
+export const BANDIT_RAID_CHANCE_PER_STRENGTH = 0.05;
+export const BANDIT_RAID_CHANCE_CAP = 0.85;
+export const BANDIT_THEFT_PER_STRENGTH = 3;     // theft ≈ (strength − militia) × this, plus BANDIT_THEFT_JITTER
+// The palisade is a buffer, not a permanent shield. It stops a small camp cold;
+// once the camp outgrows the wall, it only blunts the raid.
+export const PALISADE_HOLD_STRENGTH = 3;
+export const PALISADE_THEFT_REDUCTION = 0.5;
+export const BANDIT_KNOWN_AFTER_RAIDS = 2;      // survivors track them back to the camp
+
+// Lethal raids are a separate escalation path, never the base raid (see CLAUDE.md).
+// Three guardrails so deaths can never blindside a player: the camp must be
+// KNOWN (you saw it coming), it must have grown to SEVERE strength (years of
+// neglect), and militia die before villagers do — so the remedy always exists
+// before the danger does.
+// Measured against *pressure* (camp strength the militia don't answer for),
+// not raw strength — so a standing militia holds the killing off entirely,
+// which is the guardrail that makes the remedy always available. Tuned in
+// sim/bandit_pressure.py: raising the chance or dropping the divisor turns a
+// neglected camp from "very bad century" into "guaranteed wipe".
+export const BANDIT_SEVERE_STRENGTH = 5;
+export const BANDIT_SEVERE_CHANCE = 0.25;       // even at full pressure, most raids still only take food
+export const BANDIT_SEVERE_MAX_KILLS = 2;
+export const BANDIT_SEVERE_KILL_DIVISOR = 5;    // one death per 5 points of unopposed strength
+export const MORALE_BANDIT_DEATH = -6;          // per death, on top of the theft morale; founder extra stacks
+
+// Militia hold no tile and produce nothing. Their ongoing cost is the sharpest
+// currency in the game — a fertile adult not farming, and an idle-adult birth
+// roll forgone. No separate ration; don't add one without re-running the sim.
+// Each militiaman answers for two points of camp strength. Not cosmetic: at 1:1
+// a militiaman saved less food than a farmer grew, so partial militia were
+// strictly worse than farmers and only the exact repel threshold was worth
+// buying. At 2 the whole gradient pays, and full defence against a grown camp
+// is 3 spears rather than 6.
+export const MILITIA_STRENGTH = 2;
+export const MILITIA_SORTIE_MIN = 2;            // a lone villager doesn't storm a camp
+export const SORTIE_LOSS_DIVISOR = 3;           // a failed sortie loses 1..ceil(militia / this)
+export const SORTIE_LOOT_PER_STRENGTH = 3;      // food recovered from the camp's stores on victory
+export const MORALE_SORTIE_WIN = 6;
+export const MORALE_SORTIE_LOSS = -4;
 
 // ─── Anata sacrifice (food sink event) ────────────────────────────────────────
 // Fires only when the Shrine of Anata is built. The priests ask for a great
@@ -727,7 +810,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   palisade: {
     id: "palisade",
     name: "Palisade",
-    description: "A wooden wall ringing the settlement. Blocks bandit raids.",
+    description: `A wooden wall ringing the settlement. Turns away raiders from a camp of strength ${PALISADE_HOLD_STRENGTH} or less; against a larger band it only blunts the raid, halving what they carry off.`,
     cost: { wood: 20, stone: 25 },
   },
   well: {
@@ -778,6 +861,12 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     description: "Pilings driven into the surf, a plank pier, a stone breakwater. Visiting merchants pay +1 gold per unit sold (food and wood both fetch 2 gold; stone fetches 3), and fishers can cast further along the shore and upriver.",
     cost: { wood: 12, stone: 15 },
   },
+  muster_field: {
+    id: "muster_field",
+    name: "Muster Field",
+    description: "A beaten patch of ground behind the huts, a rack of spears, and someone who remembers how the old levies drilled. Lets you raise a militia from your idle hands.",
+    cost: { wood: 15, stone: 10 },
+  },
 };
 
-export const SAVE_KEY = "isle-of-cambrera-save-v28";
+export const SAVE_KEY = "isle-of-cambrera-save-v29";

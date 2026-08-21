@@ -43,5 +43,29 @@
       "An elder is named keeper of the names. This is the whole of the office: she must be able to say, aloud and without notes, who has died here and who they were the child of, and she must teach it to someone younger before her own turn comes. Nothing is written down. Anata's faith has never trusted a thing that can be lost in a fire or read by a stranger.",
       "Whether the goddess attends is not a question the settlement asks out loud. The pyre burns better in a proper pit. The names are said. Someone tends the wall. That is what a shrine is for."
     ]
+  },
+
+  "bandit_camp_found": {
+    "title": "The Others Who Landed",
+    "image": null,
+    "_note": "Fires the moment state.banditCamp.known flips \u2014 by scouting the tile, or by survivors following a raiding party home. Keep them human, desperate, and recognisably ours; per lore, bandits are NOT draconian.",
+    "paragraphs": [
+      "There is a smell of woodsmoke on the wrong wind, and then, for the first time, a place to put it.",
+      "Whoever went out and looked comes back quiet. It is a camp \u2014 lean-tos and a cook fire and a good deal of nothing else \u2014 and it is ours in every way that matters. Exarum faces. Exarum tongue. The same crossing, the same grey strait, very probably the same charts. They came ashore on a stretch of coast that offered them less than ours offered us, and by the time anyone thought to plant, the season had gone.",
+      "That is the whole of it. There is no other story underneath. They ran, and they landed badly, and they are hungry now in the particular way that stops being an argument and starts being a fact. Someone in the settlement says <em>they could have come to us</em>, and is not answered, because everyone is doing the sum privately and nobody likes the total: we have grain because we broke ground in the first year while they were still looking for water.",
+      "By the fire that night the talk goes where such talk goes. Some are for spears. Some are for leaving well alone and building the wall higher. The oldest woman present says the only thing that turns out to be true, which is that a camp does not stay the same size, and neither does a grudge."
+    ]
+  },
+
+  "first_sortie": {
+    "title": "What the Militia Brought Back",
+    "image": null,
+    "_note": "Fires on the first won sortie (state.sortiesWon > 0). Deliberately unheroic \u2014 this is a settlement that won a small ugly fight, not a kingdom that won a war.",
+    "paragraphs": [
+      "They go out before light so that nobody has to be watched leaving, and they come back in the middle of the afternoon, which is worse, because everyone is in the open and there is nowhere to look but at them.",
+      "The camp is burned. Some of the sacks come home with our own knots still in them, which is the detail that goes round the settlement fastest and lands hardest. The rest is stores that were never ours and are ours now, and a cook pot, and a child's shoe that nobody will claim and nobody will throw away either.",
+      "There is no singing. That surprises the ones young enough to have expected singing. What there is instead is a long evening of people finding small jobs to do near one another \u2014 mending what does not need mending, standing in the doorway of the hall, being where the others are. The keeper of the names does her office. Nobody asks her to include the ones on the ridge, and nobody asks her not to.",
+      "What has changed is not the food, though the food matters. What has changed is that Cambrera has now done a thing to someone else, on purpose, having discussed it first. That is the other half of what a settlement is, and it arrived exactly as unwelcome as the elders warned it would."
+    ]
   }
 }

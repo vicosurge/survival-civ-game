@@ -32,7 +32,7 @@ Node ≥ 18.
 - TypeScript (strict, noUnusedLocals + noUnusedParameters)
 - Vite 5
 - HTML Canvas for map, DOM overlay for UI
-- localStorage saves, single slot. Key: `isle-of-cambrera-save-v28`. **Bump on any breaking state-shape change.** Old saves must fail loud → `newGame()`, never silent NaN/undefined.
+- localStorage saves, single slot. Key: `isle-of-cambrera-save-v29`. **Bump on any breaking state-shape change.** Old saves must fail loud → `newGame()`, never silent NaN/undefined.
 - **No engine, no UI framework.** React if UI complexity demands. Don't reach for Phaser/Pixi/Godot. Turn-based tile game is ~70% UI, ~30% rendering — engine wouldn't earn its weight.
 
 Version history: git log + README. This file = current state only.
@@ -54,13 +54,13 @@ Version history: git log + README. This file = current state only.
 - `STARTER_CHILD_AGE_RANGE = [0, 4]` — 2 children.
 - `NEWCOMER_AGE_RANGE = [15, 22]` — event/boat/wave refugees arrive as fresh adults.
 - Babies via `makeBabyPop()` at age 0.
-- **Founder flag is starter-only.** `MORALE_FOUNDER_EXTRA = -3` on top of base death morale (old-age, famine). Decays as starters age out. (Bandits no longer kill — see Bandits section.)
+- **Founder flag is starter-only.** `MORALE_FOUNDER_EXTRA = -3` on top of base death morale (old-age, famine). Decays as starters age out. (Also applies to the v0.10 severe-raid and failed-sortie deaths.)
 
 **Helpers (state.ts):** `isChild`/`isFertile`/`isElder`, `childCount`/`fertileCount`/`elderCount`. `adultCount = fertileCount + elderCount` (food consumption — elders eat like adults). Allocator/idle/scout cap/boat dispatch use `fertileCount`. **New pop-consuming mechanics:** check the cohort — feeding = adults+elders, working/growing = fertile only.
 
 **Famine kills youngest first** (sort age ASC, accumulate per-age food shortfall). Dead child = 14 years lost labor — delayed productivity debt, not immediate crisis. Keeps food the perpetual priority.
 
-**Bandits steal food, not lives** — see "Bandits (Exarum stragglers)" section. The older death-on-raid version was retired in v0.7.5; if a future raid escalation re-adds death, do it as a separate event (`bandits_severe`) rather than mutating the base raid.
+**Bandit raids take food; a neglected camp also takes lives** — see the "Bandits, camps, and militia" section. Death-on-raid was retired in v0.7.5 and reintroduced in v0.10 **only as a separate escalation path**, exactly as this note originally prescribed: guarded on a known camp, on unopposed pressure, and on a 25% roll, with militia dying first and children never taken.
 
 **Growth gate:** baby born at end-of-year if `pop > 0 && pop < popCapacity && food ≥ pop × 3 && morale ≥ MORALE_GROWTH_GATE = 50`. `popCapacity = INITIAL_HUT_CAPACITY (25) + houses × 6`. Hard cap; refugees bypass, births don't. The 1.5 yrs of food reserve is generous on purpose — newborn = 4-yr productivity debt.
 
@@ -105,7 +105,7 @@ Always transition through `cultivating`/`fallow`. Two exceptions:
 
 **Food-job triad must stay differentiated.** Hunter = transitory drain, farmer = sustainable + compounding via fertility, fisher = variable. Don't let hunters refill game or fishers have reserves — triad collapses.
 
-**Shed order in famine:** scout → quarryman → woodcutter → hunter → fisher → farmer. **Furthest-tile-first** within each job — close-in productive work preserved.
+**Shed order in famine:** scout → militia → quarryman → woodcutter → hunter → fisher → farmer. **Furthest-tile-first** within each job — close-in productive work preserved.
 
 **Hidden reserves** (forest 30–120, stone 60–240). Surprise exhaustion is hunter/quarryman only. Capacity stays visible.
 
@@ -118,6 +118,8 @@ Always transition through `cultivating`/`fallow`. Two exceptions:
 **Reach.** Workable if Chebyshev distance ≤ `BASE_REACH = 2` from town, OR ≤ `WORKED_REACH = 1` from any worked or road tile. Working the edge extends reach — visible territorial sprawl without a district system. 1 tile ≈ 316 m; 2 tiles ≈ 630 m honest unassisted walking range.
 
 **Allocator.** `+job` auto-claims nearest eligible. `findEligibleTile` sorts by `tileBonusForJob` DESC (fertility for farmer, fishRichness for fisher), then distance ASC. `-job` pulls from **furthest** tile. Player never manually places workers (only chooses count).
+
+**Tileless jobs.** `Job` now covers two roles that hold no tile — `scout` and `militia` (`TilelessJob`). Every tile-facing helper takes `TileJob = Exclude<Job, TilelessJob>`, so a third tileless role can't silently slip into a terrain lookup; the compiler will list every site that needs a branch.
 
 **Scouts** don't occupy tiles. Reveal `SCOUT_REVEAL_PER_YEAR × scouts` frontier tiles/turn. `+Scout` disabled when no frontier remains. Auto-retire active scouts when last frontier revealed (chronicle: "The island is fully mapped.").
 
@@ -181,6 +183,7 @@ One-time, `types.ts:BUILDINGS`, `state.buildings: Record<BuildingId, boolean>`. 
 | Long House | 20 wood, 15 stone | 25 pops | +8 morale; newcomers ×3 (with attract); unlocks stone roads + houses + Governance | — |
 | Shrine of Anata | 10 wood, 15 stone | 4 old-age deaths | Softens old-age morale (2→1, founder 3→2); enables `anata_sacrifice` event | — |
 | Chicken Coop | 5 wood, 3 stone | — | Flock 5; +0.5 food/bird/yr; auto-cull at cap=20 | — |
+| Muster Field | 15 wood, 10 stone | Bandit camp known | Unlocks the militia job | — |
 | Dock | 12 wood, 15 stone | Long House | +`DOCK_SELL_BONUS = 1` gold/unit on merchant sells (food/wood 2g, stone 3g); buy rates unchanged. Also extends fisher reach (`DOCK_WATER_REACH`) | — |
 
 **Houses** (repeatable, not in BUILDINGS): `HOUSE_COST_BASE = { wood: 8, stone: 3 }` for the first; each subsequent house costs `+HOUSE_COST_INCREMENT = { wood: 2, stone: 1 }` over the previous via `nextHouseCost(state)`. +`HOUSE_CAPACITY = 6` cap, +`HOUSE_FOOD_YIELD = 2` food/yr garden plot, +`HOUSE_STORAGE_BONUS = 10` food storage. Long House gate. API: `canBuildHouse`/`buildHouse`/`houseBlockerReason`/`nextHouseCost`. **Don't flatten the cost** — escalation prevents the late-game "grind wood for unbounded huts" loop.
@@ -306,14 +309,44 @@ Every Governance flip applies this **on top of** the destination policy's own de
 
 **Why:** the elder law was a free morale pump — respected (+5) then working (−3) nets +2 per round trip, repeatable by clicking back and forth in the panel. The flat cost makes no cycle of flips net-positive. Applied uniformly to all three laws so they behave by one rule; first-time decision handlers (`acceptElderWork`/`respectElders`/`setChildrenWorking`/`setChildrenFree`) are **untouched** — the original choice stays as authored.
 
-### Bandits (Exarum stragglers)
+### Bandits, camps, and militia (v0.10 combat loop)
 
-Reflavored from "highland raiders." Bandits are now war refugees from the Exarum continent — same lineage as the player's settlers, but they came ashore elsewhere on Cambrera and turned to theft. They **steal food, not lives**.
+Bandits are war refugees from the Exarum continent — same lineage as the player's settlers, landed elsewhere on Cambrera, turned to theft. **Not draconians** (lore memory is explicit: don't retcon them).
 
-- `BANDIT_THEFT_RANGE = [5, 15]` — stolen amount rolled per raid, capped at current food.
-- `MORALE_BANDIT_THEFT = -3` when food is taken; `MORALE_BANDIT_EMPTY = -2` when stores were already empty (still demoralising).
-- Palisade still blocks the event entirely (averted line in chronicle).
-- **Don't reintroduce death-on-raid** without a fresh design conversation. Smaller recoverable shock keeps the threat present without the demographic gut-punch the older design caused.
+**They no longer raid and vanish.** The `bandits` event is now a *seeder*: it founds a camp and drops to weight 0 while one stands (`adjustedWeight` in events.ts). Raids come from the turn pipeline, step 4.5.
+
+`state.banditCamp: BanditCamp | null` — `{ x, y, strength, known, raidsSuffered, yearFounded }`. **One camp at a time.** A destroyed camp can be re-seeded later, starting over at strength 1.
+
+- **Siting:** `findBanditCampSite` (map.ts) — land, unworked, Chebyshev ≥ `BANDIT_CAMP_MIN_DISTANCE = 5` from town, **preferring undiscovered tiles** so finding it is a real reveal and scouting gains a second purpose.
+- **`known`** flips when the tile is discovered, or after `BANDIT_KNOWN_AFTER_RAIDS = 2` raids (survivors follow them home). It gates the sortie, the Muster Field, the map marker, *and* lethal raids.
+- **Growth:** +`BANDIT_CAMP_GROWTH = 1`/yr to `BANDIT_CAMP_MAX_STRENGTH = 6`. Never raids the year it was founded (`yearFounded`).
+- **Raid chance:** `BANDIT_RAID_CHANCE_BASE 0.35 + strength × 0.05`, capped `0.85`. **Not every year** — the quiet years are the dread.
+- **Theft:** `pressure × BANDIT_THEFT_PER_STRENGTH (3) + BANDIT_THEFT_JITTER [0,10]`, where `pressure = strength − militiaDefence`.
+
+**Palisade is a buffer, not a shield.** Fully blocks while `strength ≤ PALISADE_HOLD_STRENGTH = 3`; above that it only halves theft (`PALISADE_THEFT_REDUCTION`). The `blockedBy: "palisade"` tag was **removed from the event** — the wall stops raids, not camps.
+
+**Militia** — `state.militia`, a count like `state.scouts`, gated on the **Muster Field** (15w/10s, gate blocker `"Requires word of a bandit camp."` so `isBuildingHidden` keeps it hidden until the camp is known).
+- `MILITIA_STRENGTH = 2` per militiaman. **Not cosmetic** — at 1:1 a militiaman saved less food than a farmer grew, so partial militia were strictly worse than farmers and only the exact repel threshold was worth buying. Sim-verified; don't flatten it back.
+- `defence ≥ strength` → raid repelled outright, nothing taken, nobody killed.
+- Ongoing cost is **opportunity cost only** — a fertile adult not producing, plus a forgone idle-adult birth roll. **No food ration**; don't add one without re-running the sim.
+- Shed order is now scout → **militia** → quarryman → woodcutter → hunter → fisher → farmer.
+- `assignedTotal` (state.ts) **must** include `state.militia` — otherwise idle double-books them into both the allocator and the birth bonus.
+
+**Lethal raids** (`MORALE_BANDIT_DEATH = -6`/death, founder extra stacks). This is the escalation CLAUDE.md pre-authorized; it is a **separate path**, never a mutation of the base raid. Three guardrails, all load-bearing:
+1. The camp must be **`known`** — a player is never blindsided by a camp they've never heard of.
+2. **`pressure ≥ BANDIT_SEVERE_STRENGTH = 5`** — measured against pressure, not raw strength, so a standing militia holds the killing off entirely.
+3. Only `BANDIT_SEVERE_CHANCE = 0.25` of qualifying raids kill at all; max `BANDIT_SEVERE_MAX_KILLS = 2`.
+
+**Militia die first** (`killDefenders`), then other fertile adults. **Never children** — famine owns that cohort, and stacking both on it was the v0.7.5 gut-punch. Deaths get their own chronicle line, **not** `emitPopulationTally`.
+
+**Sortie** — the player's half of the loop. Tile panel button on the camp tile (`renderTileInfo`, outside the road-button `terrain !== "mountain"` guard). `sortieBlockerReason` / `canSortie` / `executeSortie` mirror the `buildBlockerReason` / `canBuild` / `build` trio — **extend the blocker helper, don't branch in ui.ts**.
+- Resolves **immediately and synchronously**, like `build()`. No pause modal.
+- Odds = `militiaDefence / (militiaDefence + strength)` — a straight contest, shown on the button so the call is informed.
+- Win: camp cleared, `strength × SORTIE_LOOT_PER_STRENGTH (3)` food, `+MORALE_SORTIE_WIN (6)`, `sortiesWon++`.
+- Lose: `1..ceil(militia / SORTIE_LOSS_DIVISOR)` militia killed, camp strength −1, `MORALE_SORTIE_LOSS (-4)`.
+- `state.sortieUsedThisYear` (cleared at the top of `endYear`) — one per year, so the camp can't be ground down in a single turn.
+
+**Balance is sim-backed** (`sim/bandit_pressure.py`, 500 × 120yr): ignore → 55% wipe rate; palisade only → 43.5 pop vs 55.3 baseline; militia-no-sortie → same pop but pays in labour not food; militia+sortie → 54.4. **Re-run the sim before touching any of these constants** — the tuning notes in that file record two changes that were forced by it.
 
 ### Anata sacrifice (food-sink event)
 
@@ -444,6 +477,7 @@ Milestone narrative interludes — Infocom-style "feelies." Three or four paragr
 2.   Scouts reveal frontier; auto-retire if no frontier remains
 3.   Advance tile states (cultivating→worked, worked→fallow, fallow→wild)
 4.   Scripted wave (if due) OR random event
+4.5  Bandit camp — grow, maybe raid (theft, then the severe path)
 5.   Food consumption; chronicle line; famine kills (youngest first)
 5.5  Spoilage — food held above `foodCapacity` partly rots
 6.   Reconcile (shed workers if adults died — scout first, then furthest)
@@ -455,7 +489,7 @@ Milestone narrative interludes — Infocom-style "feelies." Three or four paragr
 - Step 0 first: age changes (deaths, coming-of-age) before anything depending on adult count.
 - Step 0.5: boat after home aging, before yields — returning crew counts toward this turn's food.
 - Step 3 < 4: cultivating tiles don't yield this turn.
-- Step 4 < 5: food events settle before famine check, keeping food display truthful.
+- Step 4 < 4.5 < 5: an event may found a camp this year (it won't raid until next); raid theft settles before the famine check, keeping the food display truthful.
 - Step 5 < 5.5 < 7: eat *before* spoiling (nobody starves beside grain that rotted the same year, and the "Consumed N food" line stays true), spoil *before* the growth check (a surplus that won't survive the winter can't buy a birth).
 - Reconcile at 0 (elders) and 6 (famine) — one cleanup per pop delta.
 
@@ -476,6 +510,7 @@ src/ui.ts           DOM overlays. renderUI, intro, wizard, trade, governance, he
 src/help.ts         HELP_SECTIONS. **Update with mechanic changes** — out-of-date help is worse than none.
 src/narratives.ts   Chronicle prose (unlock, town upgrade, civic flip, job tooltips). Keep prose out of turn.ts.
 src/cutscenes.ts    Cutscene trigger table + seen/archive helpers. Owns *when*, never *what*.
+sim/                Python balance sims. bandit_pressure.py backs the v0.10 combat numbers.
 src/content/        Player-facing prose as JSON. cutscenes.json today; #32 would move the rest here.
 src/style.css       Retro palette: muted browns, gold accents, monospace.
 public/music/       Music served at /music/* (not bundled). gemini_iron_under_snow.mp3.

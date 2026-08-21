@@ -326,6 +326,7 @@ html, body {
 #tile-info .tile-state { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.4rem; }
 #tile-info .muted { color: var(--muted); }
 #tile-info .fertile { color: var(--good); }
+#tile-info .danger { color: var(--danger); font-weight: bold; }
 
 #log-section {
   flex: 1;
